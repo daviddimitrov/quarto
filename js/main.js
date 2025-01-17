@@ -14,7 +14,7 @@ function loadTodayTable() {
                 const row = `
                     <tr>
                         <td>${item.name}</td>
-                        <td>${getRelativeDate(formatDate(item.dueDate))}</td>
+                        <td>${getRelativeDate(item.dueDate)}</td>
                         <td>${item.duration}m</td>
                         <td>${getPriorityIcon(item.priorityLevel.name)}</td>
                         <td><input class="form-check-input task-done" type="checkbox" data-id="${item.id}"></td>
