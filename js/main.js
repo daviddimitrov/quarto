@@ -45,7 +45,7 @@ function loadAllTable() {
                 const row = `
                     <tr>
                         <td>${item.name}</td>
-                        <td>${getRelativeDate(formatDate(item.dueDate))}</td>
+                        <td>${getRelativeDate(item.dueDate)}</td>
                         <td>${item.duration}m</td>
                         <td>${getPriorityIcon(item.priorityLevel.name)}</td>
                     </tr>
@@ -100,14 +100,6 @@ function taskDone(taskId) {
             console.error('Error fetching task:', status, error);
         }
     });
-}
-
-
-// Helper function to format date
-function formatDate(dateString) {
-    const options = { year: 'numeric', month: 'short', day: 'numeric' };
-    const date = new Date(dateString);
-    return date.toLocaleDateString('de-DE', options);
 }
 
 // Helper function to map priority level to an icon
