@@ -1,4 +1,6 @@
 function loadTodayTable() {
+    $('#loading').css('display', 'flex');
+    $('#card-content').css('display', 'none');
     const apiEndpointToday = 'https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/user/867054409/tasks/today';
     
     $.ajax({
@@ -32,6 +34,8 @@ function loadTodayTable() {
                     $tableBody.append(row); // Append the row to the table body
                 });
             }
+            $('#loading').css('display', 'none');
+            $('#card-content').css('display', 'block');
         },
         error: function (xhr, status, error) {
             console.error('Error fetching data:', status, error);
@@ -40,6 +44,8 @@ function loadTodayTable() {
 }
 
 function loadAllTable() {
+    $('#loading').css('display', 'flex');
+    $('#card-content').css('display', 'none');
     // All
     const apiEndpointAll = 'https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/user/867054409/tasks';
     $.ajax({
@@ -62,6 +68,8 @@ function loadAllTable() {
                 `;
                 $tableBody.append(row); // Append the row to the table body
             });
+            $('#loading').css('display', 'none');
+            $('#card-content').css('display', 'block');
         },
         error: function (xhr, status, error) {
             console.error('Error fetching data:', status, error);
@@ -70,8 +78,9 @@ function loadAllTable() {
 }
 
 function taskDone(taskId) {
-    $('#overlay').css('display', 'block');
-
+    $('#loading').css('display', 'flex');
+    $('#card-content').css('display', 'none');
+    
     const apiEndpoint = `https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/task/${taskId}`;
 
     // Schritt 1: Hole die Aufgabe per GET
@@ -99,7 +108,6 @@ function taskDone(taskId) {
                 success: function(data, textStatus, xhr) {
                     if (xhr.status === 202) {
                         loadTodayTable();
-                        $('#overlay').css('display', 'none');
                     }
                 },
                 error: function (xhr, status, error) {

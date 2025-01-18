@@ -17,14 +17,6 @@
 </head>
 
 <body>
-    <div id="overlay">
-        <div id="text">
-            <div class="position-absolute w-100 h-100 d-flex flex-column align-items-center justify-content-center">
-                <img src="./assets/images/logo.png" class="rotation">
-            </div>
-        </div>
-    </div>
-
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
@@ -48,14 +40,18 @@
 
     <div class="container d-flex flex-column justify-content-center align-items-center" style="padding-top: 25px">
         <div class="card p-4 shadow-lg" style="width: 100%;">
-            <h3 class="text-center mb-4 table-header">Heutige Aufgaben</h3>
-            <table class="table table-hover">
-                <tbody>
-                    
-                </tbody>
-            </table>
-            <button style="font-size: 10px; width: 40px;" type="button" class="btn btn-outline-primary btn-sm"
-                data-toggle="modal" data-target="#exampleModalCenter">Neu</button>
+            <div id="card-content">
+                <h3 class="text-center mb-4 table-header">Heutige Aufgaben</h3>
+                <table class="table table-hover">
+                    <tbody>
+                        
+                    </tbody>
+                </table>
+            </div>
+                <div id="loading" class="inner w-100 h-100 flex-column align-items-center justify-content-center">
+                    <img src="./assets/images/logo.png" class="rotation">
+                </div>
+            </div>
         </div>
     </div>
 
@@ -134,14 +130,7 @@
     <script>
         $(document).ready(function () {
             // Trigger die Funktion zum Laden der Aufgaben
-            
-            $('#overlay').css('display', 'block');
             loadTodayTable();
-            setTimeout(
-                function() 
-                {
-                    $('#overlay').css('display', 'none');
-                }, 2000);
             // Binde das Change-Event an alle Checkboxen vom Typ 'task-done'
             $(document).on('change', '.task-done', function () {
                 const taskId = $(this).data('id');
@@ -154,13 +143,7 @@
                 $('#today-link').addClass('active');
                 $('.table-header').empty();
                 $('.table-header').text('Heutige Aufgaben');
-                $('#overlay').css('display', 'block');
                 loadTodayTable();
-                setTimeout(
-                    function() 
-                    {
-                        $('#overlay').css('display', 'none');
-                }, 2000);
             });
 
             $('#all-link').click(function(event) {
@@ -168,14 +151,9 @@
                 $('.nav-link').removeClass('active');
                 $('#all-link').addClass('active');
                 $('.table-header').text('Alle Aufgaben');
-                $('#overlay').css('display', 'block');
+                $('#loading').css('display', 'flex');
+                $('#card-content').css('display', 'none');
                 loadAllTable();
-                setTimeout(
-                    function() 
-                    {
-                        $('#overlay').css('display', 'none');
-                }, 2000);
-
             });
         });
     </script>
