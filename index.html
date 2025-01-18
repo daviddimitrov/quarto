@@ -36,10 +36,10 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
-                        <a class="nav-link active" href="#" id="today-link">Today</a>
+                        <a class="nav-link active" href="#" id="today-link">Heute</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#" id="all-link">All</a>
+                        <a class="nav-link" href="#" id="all-link">Alle</a>
                     </li>
                 </ul>
             </div>
@@ -48,14 +48,14 @@
 
     <div class="container d-flex flex-column justify-content-center align-items-center" style="padding-top: 25px">
         <div class="card p-4 shadow-lg" style="width: 100%;">
-            <h3 class="text-center mb-4 table-header">Todays Tasks</h3>
+            <h3 class="text-center mb-4 table-header">Heutige Aufgaben</h3>
             <table class="table table-hover">
                 <tbody>
                     
                 </tbody>
             </table>
             <button style="font-size: 10px; width: 40px;" type="button" class="btn btn-outline-primary btn-sm"
-                data-toggle="modal" data-target="#exampleModalCenter">New</button>
+                data-toggle="modal" data-target="#exampleModalCenter">Neu</button>
         </div>
     </div>
 
@@ -65,7 +65,7 @@
         <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="exampleModalLongTitle">New Task</h5>
+                    <h5 class="modal-title" id="exampleModalLongTitle">Neue Aufgabe</h5>
                     <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                         <span aria-hidden="true">&times;</span>
                     </button>
@@ -77,15 +77,15 @@
                             <div class="row" style="padding-bottom: 20px;">
                                 <div class="col-sm-12">
                                     <div class="form-group">
-                                        <label for="inputTask">Task</label>
-                                        <input type="text" class="form-control" id="inputTask" placeholder="Bathe your hamster">
+                                        <label for="inputTask">Aufgabe</label>
+                                        <input type="text" class="form-control" id="inputTask" placeholder="Hamster waschen">
                                     </div>
                                 </div>
                             </div>
                             <div class="row" style="padding-bottom: 20px;">
                                 <div class="col-sm-6">
                                     <div class="form-group">
-                                        <label for="selectPriority">Priority</label>
+                                        <label for="selectPriority">Priorität</label>
                                         <select class="form-control" id="selectPriority">
                                             <option selected>LOW</option>
                                             <option>MEDIUM</option>
@@ -96,7 +96,7 @@
                                 </div>
                                 <div class="col-sm-6">
                                     <div class="form-group">
-                                        <label for="pickDueDate">Due date</label>
+                                        <label for="pickDueDate">Fällig am</label>
                                         <input type="date" class="form-control" id="pickDueDate">
                                     </div>
                                 </div>
@@ -105,7 +105,7 @@
                             <div class="row" style="padding-bottom: 20px;">
                                 <div class="col-sm-6">
                                     <div class="form-group">
-                                        <label for="inputFrequency">Frequency in Days</label>
+                                        <label for="inputFrequency">Frequenz in Tagen</label>
                                         <input disabled type="number" class="form-control" id="inputFrequency" placeholder="12">
                                     </div>
                                 </div>
@@ -123,8 +123,8 @@
                     </form>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary">Create</button>
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Abbruch</button>
+                    <button type="button" class="btn btn-primary">Erstellen</button>
                 </div>
             </div>
         </div>
@@ -153,7 +153,7 @@
                 $('.nav-link').removeClass('active');
                 $('#today-link').addClass('active');
                 $('.table-header').empty();
-                $('.table-header').text('Todays Tasks');
+                $('.table-header').text('Heutige Aufgaben');
                 $('#overlay').css('display', 'block');
                 loadTodayTable();
                 setTimeout(
@@ -167,7 +167,7 @@
                 event.preventDefault();
                 $('.nav-link').removeClass('active');
                 $('#all-link').addClass('active');
-                $('.table-header').text('All Tasks');
+                $('.table-header').text('Alle Aufgaben');
                 $('#overlay').css('display', 'block');
                 loadAllTable();
                 setTimeout(

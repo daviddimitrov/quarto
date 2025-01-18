@@ -9,19 +9,29 @@ function loadTodayTable() {
             const $tableBody = $('tbody');
             $tableBody.empty(); // Clear existing rows if any
 
-            response.forEach(item => {
-                // Build a new row
-                const row = `
+            if (response.length === 0) {
+                // Add a row with the "Nothing to do today." message
+                const emptyRow = `
                     <tr>
-                        <td>${item.name}</td>
-                        <td>${getRelativeDate(item.dueDate)}</td>
-                        <td>${item.duration}m</td>
-                        <td>${getPriorityIcon(item.priorityLevel.name)}</td>
-                        <td><input class="form-check-input task-done" type="checkbox" data-id="${item.id}"></td>
+                        <td colspan="5" style="text-align: center;">Nix 🎉</td>
                     </tr>
                 `;
-                $tableBody.append(row); // Append the row to the table body
-            });
+                $tableBody.append(emptyRow);
+            } else {
+                response.forEach(item => {
+                    // Build a new row
+                    const row = `
+                        <tr>
+                            <td>${item.name}</td>
+                            <td>${getRelativeDate(item.dueDate)}</td>
+                            <td>${item.duration}m</td>
+                            <td>${getPriorityIcon(item.priorityLevel.name)}</td>
+                            <td><input class="form-check-input task-done" type="checkbox" data-id="${item.id}"></td>
+                        </tr>
+                    `;
+                    $tableBody.append(row); // Append the row to the table body
+                });
+            }
         },
         error: function (xhr, status, error) {
             console.error('Error fetching data:', status, error);
