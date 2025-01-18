@@ -78,6 +78,7 @@ function taskDone(taskId) {
 
             // Schritt 3: Aktualisiere das Fälligkeitsdatum
             task.dueDate = stringDate;
+            task.today = 0;
 
             // Schritt 4: Sende die aktualisierte Aufgabe per PUT zurück
             $.ajax({
