@@ -13,7 +13,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="./js/main.js"></script>
     <link rel="stylesheet" href="./css/main.css">
-
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 </head>
 
 <body>
@@ -47,6 +47,7 @@
                         
                     </tbody>
                 </table>
+                <button type="button" class="btn btn-sm btn-outline-success bi bi-plus" data-bs-toggle="modal" data-bs-target="#exampleModalCenter"></button>
             </div>
                 <div id="loading" class="inner w-100 h-100 flex-column align-items-center justify-content-center">
                     <img src="./assets/images/logo.png" class="rotation">
@@ -62,9 +63,7 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="exampleModalLongTitle">Neue Aufgabe</h5>
-                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                        <span aria-hidden="true">&times;</span>
-                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-success bi bi-x close" data-dismiss="modal" aria-label="Close" data-bs-toggle="modal" data-bs-target="#exampleModalCenter"></button>
                 </div>
                 <div class="modal-body">
                     
@@ -119,8 +118,8 @@
                     </form>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Abbruch</button>
-                    <button type="button" class="btn btn-primary">Erstellen</button>
+                    <button type="button" class="btn btn-sm btn-outline-success bi bi-check task-create">
+                    </button>
                 </div>
             </div>
         </div>
@@ -131,10 +130,27 @@
         $(document).ready(function () {
             // Trigger die Funktion zum Laden der Aufgaben
             loadTodayTable();
-            // Binde das Change-Event an alle Checkboxen vom Typ 'task-done'
-            $(document).on('change', '.task-done', function () {
+
+            $(document).on('click','.task-done',function(){
                 const taskId = $(this).data('id');
                 taskDone(taskId);
+            });
+
+            $("#repeatCheck").change(function() {
+                if(this.checked) {
+                    $("#inputFrequency").prop('disabled', false);
+                } else {
+                    $("#inputFrequency").prop('disabled', true);
+                }
+            });
+
+            $(document).on('click','.task-create',function(){
+                inputTask = $('#inputTask').val();
+                selectPriority = $('#selectPriority').val();
+                pickDueDate = $('#pickDueDate').val();
+                inputFrequency = $('#inputFrequency').val();
+                repeatCheck = $('#repeatCheck').is(":checked");
+                alert(inputTask + selectPriority + pickDueDate + inputFrequency + repeatCheck);
             });
 
             $('#today-link').click(function(event) {

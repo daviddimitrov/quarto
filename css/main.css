@@ -78,3 +78,17 @@
 #loading {
     display: flex;
 }
+
+button {
+    border-color: #40c351 !important;
+    color: #40c351 !important;
+}
+
+button:hover{
+    background-color: #40c351 !important;
+    color: white !important;
+}
+
+.table {
+    line-height: 35px;
+}

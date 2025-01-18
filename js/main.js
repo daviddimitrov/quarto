@@ -28,7 +28,10 @@ function loadTodayTable() {
                             <td>${getRelativeDate(item.dueDate)}</td>
                             <td>${item.duration}m</td>
                             <td>${getPriorityIcon(item.priorityLevel.name)}</td>
-                            <td><input class="form-check-input task-done" type="checkbox" data-id="${item.id}"></td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-success bi bi-check task-done" data-id=${item.id}>
+                                </button>
+                            </td>
                         </tr>
                     `;
                     $tableBody.append(row); // Append the row to the table body
