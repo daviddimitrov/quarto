@@ -48,7 +48,7 @@
                     </tbody>
                 </table>
                 <button type="button" class="btn btn-sm btn-outline-success bi bi-plus" data-bs-toggle="modal" data-bs-target="#exampleModalCenter"></button>
-                <button type="button" class="btn btn-sm btn-outline-success bi bi-arrow-clockwise" id="refresh-today-btn"></button>
+                <button type="button" class="btn btn-sm btn-outline-success bi bi-arrow-clockwise" onclick="refreshToday();"></button>
             </div>
                 <div id="loading" class="inner w-100 h-100 flex-column align-items-center justify-content-center">
                     <img src="./assets/images/logo.png" class="rotation">
@@ -126,47 +126,32 @@
 
     <script>
         $(document).ready(function () {
-            // Trigger die Funktion zum Laden der Aufgaben
             loadTodayTable();
-
-            $(document).on('click','.task-done',function(){
-                const taskId = $(this).data('id');
-                taskDone(taskId);
-            });
-
-            $(document).on('click','#refresh-today-btn',function(){
-                refreshToday();
-            });
-
 
             $("#add-task-form").submit(function(event){
                 event.preventDefault();
-                inputTask = $('#inputTask').val();
-                selectPriority = $('#selectPriority').val();
-                pickDueDate = $('#pickDueDate').val();
-                inputFrequency = $('#inputFrequency').val();
-                inputDuration = $('#inputDuration').val();
-                addTask(selectPriority, inputTask, inputDuration, pickDueDate, inputFrequency);
+                addTask();
             });
 
-            $('#today-link').click(function(event) {
+            $('.nav-link').click(function(event) {
                 event.preventDefault();
                 $('.nav-link').removeClass('active');
-                $('#today-link').addClass('active');
-                $('.table-header').empty();
-                $('.table-header').text('Heutige Aufgaben');
-                loadTodayTable();
+                switch (event.target.id) {
+                    case 'today-link':
+                        $('#today-link').addClass('active');
+                        $('.table-header').text('Heutige Aufgaben');
+                        loadTodayTable();
+                        break;
+                    case 'all-link':
+                        $('#all-link').addClass('active');
+                        $('.table-header').text('Alle Aufgaben');
+                        loadAllTable();
+                        break;
+                    default:
+                        console.log(`Sorry, we are out of ${expr}.`);
+                }
             });
-
-            $('#all-link').click(function(event) {
-                event.preventDefault();
-                $('.nav-link').removeClass('active');
-                $('#all-link').addClass('active');
-                $('.table-header').text('Alle Aufgaben');
-                $('#loading').css('display', 'flex');
-                $('#card-content').css('display', 'none');
-                loadAllTable();
-            });
+            
         });
     </script>
 

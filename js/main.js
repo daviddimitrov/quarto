@@ -1,7 +1,8 @@
+let apiPrefix = "https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/";
+
 function loadTodayTable() {
-    $('#loading').css('display', 'flex');
-    $('#card-content').css('display', 'none');
-    const apiEndpointToday = 'https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/user/867054409/tasks/today';
+    startLoadingScreen();
+    const apiEndpointToday = apiPrefix + 'user/867054409/tasks/today';
     
     $.ajax({
         url: apiEndpointToday,
@@ -29,9 +30,9 @@ function loadTodayTable() {
                             <td>${item.duration}m</td>
                             <td>${getPriorityIcon(item.priorityLevel.name)}</td>
                             <td>
-                                <button type="button" class="btn btn-sm btn-outline-success bi bi-check task-done" data-id=${item.id}>
+                                <button type="button" class="btn btn-sm btn-outline-success bi bi-check" onclick="taskDone(${item.id});">
                                 </button>
-                                <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-x task-not-today" data-id=${item.id}>
+                                <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-x" onclick="taskNotToday(${item.id});">
                                 </button>
                             </td>
                         </tr>
@@ -39,8 +40,7 @@ function loadTodayTable() {
                     $tableBody.append(row); // Append the row to the table body
                 });
             }
-            $('#loading').css('display', 'none');
-            $('#card-content').css('display', 'block');
+            stopLoadingScreen();
         },
         error: function (xhr, status, error) {
             console.error('Error fetching data:', status, error);
@@ -49,10 +49,9 @@ function loadTodayTable() {
 }
 
 function loadAllTable() {
-    $('#loading').css('display', 'flex');
-    $('#card-content').css('display', 'none');
+    startLoadingScreen();
     // All
-    const apiEndpointAll = 'https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/user/867054409/tasks';
+    const apiEndpointAll = apiPrefix + 'user/867054409/tasks';
     $.ajax({
         url: apiEndpointAll,
         method: 'GET',
@@ -70,17 +69,16 @@ function loadAllTable() {
                         <td>${item.duration}m</td>
                         <td>${getPriorityIcon(item.priorityLevel.name)}</td>
                         <td>
-                            <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-pencil task-edit" data-id=${item.id}>
+                            <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-pencil" onclick="taskEdit(${item.id});">
                             </button>
-                            <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-trash task-delete" data-id=${item.id}>
+                            <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-trash" onclick="taskDelete(${item.id});">
                             </button>
                         </td>
                     </tr>
                 `;
                 $tableBody.append(row); // Append the row to the table body
             });
-            $('#loading').css('display', 'none');
-            $('#card-content').css('display', 'block');
+            stopLoadingScreen();
         },
         error: function (xhr, status, error) {
             console.error('Error fetching data:', status, error);
@@ -89,10 +87,9 @@ function loadAllTable() {
 }
 
 function taskDone(taskId) {
-    $('#loading').css('display', 'flex');
-    $('#card-content').css('display', 'none');
+    startLoadingScreen();
     
-    const apiEndpoint = `https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/task/${taskId}`;
+    const apiEndpoint = apiPrefix + `task/${taskId}`;
 
     // Schritt 1: Hole die Aufgabe per GET
     $.ajax({
@@ -132,8 +129,15 @@ function taskDone(taskId) {
     });
 }
 
-function addTask(priorityLevelId, name, duration, dueDate, frequency) {    
-    const apiEndpoint = `https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/task`;
+function addTask() {   
+    startLoadingScreen();
+    name = $('#inputTask').val();
+    priorityLevelId = $('#selectPriority').val();
+    dueDate = $('#pickDueDate').val();
+    frequency = $('#inputFrequency').val();
+    duration = $('#inputDuration').val();
+
+    const apiEndpoint = apiPrefix + `task`;
 
     task = {
         priority_level_id: priorityLevelId,
@@ -153,12 +157,9 @@ function addTask(priorityLevelId, name, duration, dueDate, frequency) {
         success: function(data, textStatus, xhr) {
             $('#exampleModalCenter').modal('hide');
             if (xhr.status === 201) {
-                $("#inputTask").val('');
-                $("#selectPriority").val('4');
-                $("#pickDueDate").val('');
-                $("#inputFrequency").val('');
-                loadAllTable();
+                emptyForm();
             }
+            stopLoadingScreen();
         },
         error: function (xhr, status, error) {
             console.error('Error adding task:', status, error);
@@ -167,8 +168,9 @@ function addTask(priorityLevelId, name, duration, dueDate, frequency) {
 }
 
 function refreshToday() {    
+    startLoadingScreen();
     const userId = 867054409
-    const apiEndpoint = `https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/user/${userId}/tasks/today`;
+    const apiEndpoint = apiPrefix + `user/${userId}/tasks/today`;
 
     $.ajax({
         url: apiEndpoint,
@@ -178,6 +180,7 @@ function refreshToday() {
             if (xhr.status === 202) {
                 loadTodayTable();
             }
+            stopLoadingScreen();
         },
         error: function (xhr, status, error) {
             console.error('Error adding task:', status, error);
@@ -221,4 +224,22 @@ function getRelativeDate(dateStr) {
     } catch (error) {
         return "Ungültiges Datumsformat. Bitte ein Datum im Format 'YYYY-MM-DD' übergeben.";
     }
+}
+
+function startLoadingScreen() {
+    $('#loading').css('display', 'flex');
+    $('#card-content').css('display', 'none');
+}
+
+function stopLoadingScreen() {
+    $('#loading').css('display', 'none');
+    $('#card-content').css('display', 'block');
+}
+
+function emptyForm() {
+    $("#inputTask").val('');
+    $("#selectPriority").val('4');
+    $("#pickDueDate").val('');
+    $("#inputFrequency").val('');
+    $("#inputDuration").val('');
 }
