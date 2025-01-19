@@ -128,15 +128,15 @@ function taskDone(taskId) {
 function getPriorityIcon(priorityName) {
     switch (priorityName) {
         case 'ASAP':
-            return '❗️';
+            return '<i style="color: #be2812" class="bi bi-exclamation-circle-fill"></i>';
         case 'HIGH':
-            return '🔴';
+            return '<i style="color: #c35140" class="bi bi-circle-fill"></i>';
         case 'MEDIUM':
-            return '🟡';
+            return '<i style="color: #ffc833" class="bi bi-circle-fill"></i>';
         case 'LOW':
-            return '🟢';
+            return '<i style="color: #40c351" class="bi bi-circle-fill"></i>';
         default:
-            return '⚪️';
+            return '<i style="color: grey" class="bi bi-circle-fill"></i>';
     }
 }
 

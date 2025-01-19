@@ -73,7 +73,7 @@
                                 <div class="col-sm-12">
                                     <div class="form-group">
                                         <label for="inputTask">Aufgabe</label>
-                                        <input type="text" class="form-control" id="inputTask" placeholder="Hamster waschen">
+                                        <input required type="text" class="form-control" id="inputTask" placeholder="Hamster waschen">
                                     </div>
                                 </div>
                             </div>
@@ -92,7 +92,7 @@
                                 <div class="col-sm-6">
                                     <div class="form-group">
                                         <label for="pickDueDate">Fällig am</label>
-                                        <input type="date" class="form-control" id="pickDueDate">
+                                        <input required type="date" class="form-control" id="pickDueDate">
                                     </div>
                                 </div>
                             </div>
@@ -101,7 +101,7 @@
                                 <div class="col-sm-6">
                                     <div class="form-group">
                                         <label for="inputFrequency">Frequenz in Tagen</label>
-                                        <input disabled type="number" class="form-control" id="inputFrequency" placeholder="12">
+                                        <input required disabled type="number" class="form-control" id="inputFrequency" placeholder="Aufgabe ist jeden x-ten Tag fällig">
                                     </div>
                                 </div>
                                 <div class="col-sm-6">
@@ -115,12 +115,13 @@
                                     </div>
                                 </div>
                             </div>
-                    </form>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-sm btn-outline-success bi bi-check task-create">
+                    <button type="submit" class="btn btn-sm btn-outline-success bi bi-check task-create">
                     </button>
                 </div>
+
+            </form>
             </div>
         </div>
     </div>
