@@ -48,6 +48,7 @@
                     </tbody>
                 </table>
                 <button type="button" class="btn btn-sm btn-outline-success bi bi-plus" data-bs-toggle="modal" data-bs-target="#exampleModalCenter"></button>
+                <button type="button" class="btn btn-sm btn-outline-success bi bi-arrow-clockwise" id="refresh-today-btn"></button>
             </div>
                 <div id="loading" class="inner w-100 h-100 flex-column align-items-center justify-content-center">
                     <img src="./assets/images/logo.png" class="rotation">
@@ -67,7 +68,7 @@
                 </div>
                 <div class="modal-body">
                     
-                    <form>
+                    <form id="add-task-form">
                         <div class="container-fluid">
                             <div class="row" style="padding-bottom: 20px;">
                                 <div class="col-sm-12">
@@ -82,10 +83,10 @@
                                     <div class="form-group">
                                         <label for="selectPriority">Priorität</label>
                                         <select class="form-control" id="selectPriority">
-                                            <option selected>LOW</option>
-                                            <option>MEDIUM</option>
-                                            <option>HIGH</option>
-                                            <option>ASAP</option>
+                                            <option value="4">LOW</option>
+                                            <option value="3">MEDIUM</option>
+                                            <option value="2">HIGH</option>
+                                            <option value="1">ASAP</option>
                                         </select>
                                     </div>
                                 </div>
@@ -101,17 +102,13 @@
                                 <div class="col-sm-6">
                                     <div class="form-group">
                                         <label for="inputFrequency">Frequenz in Tagen</label>
-                                        <input required disabled type="number" class="form-control" id="inputFrequency" placeholder="Aufgabe ist jeden x-ten Tag fällig">
+                                        <input required type="number" class="form-control" id="inputFrequency" placeholder="Aufgabe ist jeden x-ten Tag fällig">
                                     </div>
                                 </div>
                                 <div class="col-sm-6">
                                     <div class="form-group">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" id="repeatCheck">
-                                            <label class="form-check-label" for="repeatCheck">
-                                                Repeated Task?
-                                            </label>
-                                        </div>
+                                        <label for="inputDuration">Dauer in Minuten</label>
+                                        <input required type="number" class="form-control" id="inputDuration" placeholder="Aufgabe dauert x Minuten">
                                     </div>
                                 </div>
                             </div>
@@ -137,21 +134,19 @@
                 taskDone(taskId);
             });
 
-            $("#repeatCheck").change(function() {
-                if(this.checked) {
-                    $("#inputFrequency").prop('disabled', false);
-                } else {
-                    $("#inputFrequency").prop('disabled', true);
-                }
+            $(document).on('click','#refresh-today-btn',function(){
+                refreshToday();
             });
 
-            $(document).on('click','.task-create',function(){
+
+            $("#add-task-form").submit(function(event){
+                event.preventDefault();
                 inputTask = $('#inputTask').val();
                 selectPriority = $('#selectPriority').val();
                 pickDueDate = $('#pickDueDate').val();
                 inputFrequency = $('#inputFrequency').val();
-                repeatCheck = $('#repeatCheck').is(":checked");
-                alert(inputTask + selectPriority + pickDueDate + inputFrequency + repeatCheck);
+                inputDuration = $('#inputDuration').val();
+                addTask(selectPriority, inputTask, inputDuration, pickDueDate, inputFrequency);
             });
 
             $('#today-link').click(function(event) {

@@ -124,6 +124,59 @@ function taskDone(taskId) {
     });
 }
 
+function addTask(priorityLevelId, name, duration, dueDate, frequency) {    
+    const apiEndpoint = `https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/task`;
+
+    task = {
+        priority_level_id: priorityLevelId,
+        user_id: 867054409,
+        name: name,
+        duration: duration,
+        dueDate: dueDate,
+        rhythm: frequency,
+        today: 0
+    }
+
+    $.ajax({
+        url: apiEndpoint,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(task), // Aufgabe als JSON-String senden
+        success: function(data, textStatus, xhr) {
+            $('#exampleModalCenter').modal('hide');
+            if (xhr.status === 201) {
+                $("#inputTask").val('');
+                $("#selectPriority").val('4');
+                $("#pickDueDate").val('');
+                $("#inputFrequency").val('');
+                loadAllTable();
+            }
+        },
+        error: function (xhr, status, error) {
+            console.error('Error adding task:', status, error);
+        }
+    });
+}
+
+function refreshToday() {    
+    const userId = 867054409
+    const apiEndpoint = `https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/user/${userId}/tasks/today`;
+
+    $.ajax({
+        url: apiEndpoint,
+        method: 'PATCH',
+        contentType: 'application/json',
+        success: function(data, textStatus, xhr) {
+            if (xhr.status === 202) {
+                loadTodayTable();
+            }
+        },
+        error: function (xhr, status, error) {
+            console.error('Error adding task:', status, error);
+        }
+    });
+}
+
 // Helper function to map priority level to an icon
 function getPriorityIcon(priorityName) {
     switch (priorityName) {
