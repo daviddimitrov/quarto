@@ -31,6 +31,8 @@ function loadTodayTable() {
                             <td>
                                 <button type="button" class="btn btn-sm btn-outline-success bi bi-check task-done" data-id=${item.id}>
                                 </button>
+                                <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-x task-not-today" data-id=${item.id}>
+                                </button>
                             </td>
                         </tr>
                     `;
@@ -67,6 +69,12 @@ function loadAllTable() {
                         <td>${getRelativeDate(item.dueDate)}</td>
                         <td>${item.duration}m</td>
                         <td>${getPriorityIcon(item.priorityLevel.name)}</td>
+                        <td>
+                            <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-pencil task-edit" data-id=${item.id}>
+                            </button>
+                            <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-trash task-delete" data-id=${item.id}>
+                            </button>
+                        </td>
                     </tr>
                 `;
                 $tableBody.append(row); // Append the row to the table body
