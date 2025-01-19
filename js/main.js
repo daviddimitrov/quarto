@@ -128,7 +128,7 @@ function taskDone(taskId) {
 function getPriorityIcon(priorityName) {
     switch (priorityName) {
         case 'ASAP':
-            return '<i style="color: #be2812" class="bi bi-exclamation-circle-fill"></i>';
+            return '<i style="color: #c35140" class="bi bi-exclamation-circle-fill"></i>';
         case 'HIGH':
             return '<i style="color: #c35140" class="bi bi-circle-fill"></i>';
         case 'MEDIUM':
