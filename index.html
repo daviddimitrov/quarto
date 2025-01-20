@@ -57,6 +57,20 @@
         </div>
     </div>
 
+    <div class="modal fade" id="deleteTaskModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-body">
+                    Soll "<span id="toBeDeletedTaskName">Hamster waschen</span>" wirklich gelöscht werden?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-outline-success" data-bs-dismiss="modal">Nein</button>
+                    <button type="button" class="btn btn-sm btn-outline-success" id="toBeDeletedTaskButton" data-id="0">Ja</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal -->
     <div class="modal fade" id="exampleModalCenter" tabindex="-1" role="dialog"
         aria-labelledby="exampleModalCenterTitle" aria-hidden="true">

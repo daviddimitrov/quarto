@@ -26,13 +26,12 @@ function loadTodayTable() {
                     const row = `
                         <tr>
                             <td>${item.name}</td>
-                            <td>${getRelativeDate(item.dueDate)}</td>
-                            <td>${item.duration}m</td>
-                            <td>${getPriorityIcon(item.priorityLevel.name)}</td>
+                            <td style="font-size: small;">${getRelativeDate(item.dueDate)}</td>
+                            <td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>
                             <td>
                                 <div class="dropdown">
                                     <button class="btn tn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                        Aktion
+                                        
                                     </button>
                                     <div class="dropdown-menu" aria-labelledby="dropdownMenu">
                                         <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskDone(${item.id});">Erledigt</button>
@@ -70,18 +69,17 @@ function loadAllTable() {
                 const row = `
                     <tr>
                         <td>${item.name}</td>
-                        <td>${getRelativeDate(item.dueDate)}</td>
-                        <td>${item.duration}m</td>
-                        <td>${getPriorityIcon(item.priorityLevel.name)}</td>
+                        <td style="font-size: small;">${getRelativeDate(item.dueDate)}</td>
+                        <td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>
                         <td>
                             <div class="dropdown">
                                 <button class="btn tn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                    Aktion
+                                    
                                 </button>
                                 <div class="dropdown-menu" aria-labelledby="dropdownMenu">
                                     <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskDone(${item.id});">Erledigt</button>
                                     <button disabled type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskEdit(${item.id});">Bearbeiten</button>
-                                    <button disabled type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskDelete(${item.id});">Löschen</button>
+                                    <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="startTaskDelete('${item.name}', ${item.id});">Löschen</button>
                                 </div>
                             </div>
                                                     </td>
@@ -118,6 +116,12 @@ function taskDone(taskId) {
     });
 }
 
+function startTaskDelete(task, taskId) {
+    $('#toBeDeletedTaskName').text(task);
+    $("#toBeDeletedTaskButton").attr("onclick", "taskDelete(" + taskId + ")");
+    $('#deleteTaskModal').modal('show');
+}
+
 function taskNotToday(taskId) {
     startLoadingScreen();
 
@@ -130,6 +134,29 @@ function taskNotToday(taskId) {
         success: function(data, textStatus, xhr) {
             if (xhr.status === 202) {
                 loadTodayTable();
+            }
+            stopLoadingScreen();
+        },
+        error: function (xhr, status, error) {
+            console.error('Error adding task:', status, error);
+        }
+    });
+}
+
+function taskDelete(taskId) {
+    startLoadingScreen();
+
+    $('#deleteTaskModal').modal('hide');
+
+    const apiEndpoint = apiPrefix + `task/${taskId}`;
+
+    $.ajax({
+        url: apiEndpoint,
+        method: 'DELETE',
+        contentType: 'application/json',
+        success: function(data, textStatus, xhr) {
+            if (xhr.status === 202) {
+                loadAllTable();
             }
             stopLoadingScreen();
         },
@@ -169,6 +196,7 @@ function addTask() {
             if (xhr.status === 201) {
                 emptyForm();
             }
+            loadAllTable()
             stopLoadingScreen();
         },
         error: function (xhr, status, error) {
