@@ -31,7 +31,7 @@ function loadTodayTable() {
                             <td>${getPriorityIcon(item.priorityLevel.name)}</td>
                             <td>
                                 <button type="button" class="btn btn-sm btn-outline-success bi bi-check" onclick="taskDone(${item.id});"></button>
-                                <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-x" onclick="taskNotToday(${item.id});"></button>
+                                <button type="button" class="btn btn-sm btn-outline-success bi bi-x" onclick="taskNotToday(${item.id});"></button>
                             </td>
                         </tr>
                     `;
@@ -87,6 +87,27 @@ function taskDone(taskId) {
     startLoadingScreen();
 
     const apiEndpoint = apiPrefix + `task/${taskId}/done`;
+
+    $.ajax({
+        url: apiEndpoint,
+        method: 'PATCH',
+        contentType: 'application/json',
+        success: function(data, textStatus, xhr) {
+            if (xhr.status === 202) {
+                loadTodayTable();
+            }
+            stopLoadingScreen();
+        },
+        error: function (xhr, status, error) {
+            console.error('Error adding task:', status, error);
+        }
+    });
+}
+
+function taskNotToday(taskId) {
+    startLoadingScreen();
+
+    const apiEndpoint = apiPrefix + `task/${taskId}/today`;
 
     $.ajax({
         url: apiEndpoint,
