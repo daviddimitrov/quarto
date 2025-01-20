@@ -50,6 +50,7 @@ function loadTodayTable() {
             console.error('Error fetching data:', status, error);
         }
     });
+    $('#addTaskButton').hide();
 }
 
 function loadAllTable() {
@@ -93,6 +94,8 @@ function loadAllTable() {
             console.error('Error fetching data:', status, error);
         }
     });
+
+    $('#addTaskButton').show();
 }
 
 function taskDone(taskId) {
