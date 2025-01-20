@@ -30,10 +30,8 @@ function loadTodayTable() {
                             <td>${item.duration}m</td>
                             <td>${getPriorityIcon(item.priorityLevel.name)}</td>
                             <td>
-                                <button type="button" class="btn btn-sm btn-outline-success bi bi-check" onclick="taskDone(${item.id});">
-                                </button>
-                                <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-x" onclick="taskNotToday(${item.id});">
-                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-success bi bi-check" onclick="taskDone(${item.id});"></button>
+                                <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-x" onclick="taskNotToday(${item.id});"></button>
                             </td>
                         </tr>
                     `;
@@ -69,10 +67,9 @@ function loadAllTable() {
                         <td>${item.duration}m</td>
                         <td>${getPriorityIcon(item.priorityLevel.name)}</td>
                         <td>
-                            <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-pencil" onclick="taskEdit(${item.id});">
-                            </button>
-                            <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-trash" onclick="taskDelete(${item.id});">
-                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-success bi bi-check" onclick="taskDone(${item.id});"></button>
+                            <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-pencil" onclick="taskEdit(${item.id});"></button>
+                            <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-trash" onclick="taskDelete(${item.id});"></button>
                         </td>
                     </tr>
                 `;
@@ -88,43 +85,21 @@ function loadAllTable() {
 
 function taskDone(taskId) {
     startLoadingScreen();
-    
-    const apiEndpoint = apiPrefix + `task/${taskId}`;
 
-    // Schritt 1: Hole die Aufgabe per GET
+    const apiEndpoint = apiPrefix + `task/${taskId}/done`;
+
     $.ajax({
         url: apiEndpoint,
-        method: 'GET',
-        dataType: 'json',
-        success: function (task) {
-            // Schritt 2: Berechne das neue Fälligkeitsdatum
-            const today = new Date();
-            const rhythm = task.rhythm; // Rhythmus aus der API-Antwort
-            const endDate = new Date(today.setDate(today.getDate() + rhythm));
-            const stringDate = endDate.toISOString().split('T')[0]; // Format: YYYY-MM-DD
-
-            // Schritt 3: Aktualisiere das Fälligkeitsdatum
-            task.dueDate = stringDate;
-            task.today = 0;
-
-            // Schritt 4: Sende die aktualisierte Aufgabe per PUT zurück
-            $.ajax({
-                url: apiEndpoint,
-                method: 'PUT',
-                contentType: 'application/json',
-                data: JSON.stringify(task), // Aufgabe als JSON-String senden
-                success: function(data, textStatus, xhr) {
-                    if (xhr.status === 202) {
-                        loadTodayTable();
-                    }
-                },
-                error: function (xhr, status, error) {
-                    console.error('Error updating task:', status, error);
-                }
-            });
+        method: 'PATCH',
+        contentType: 'application/json',
+        success: function(data, textStatus, xhr) {
+            if (xhr.status === 202) {
+                loadTodayTable();
+            }
+            stopLoadingScreen();
         },
         error: function (xhr, status, error) {
-            console.error('Error fetching task:', status, error);
+            console.error('Error adding task:', status, error);
         }
     });
 }
