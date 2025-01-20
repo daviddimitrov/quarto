@@ -30,8 +30,15 @@ function loadTodayTable() {
                             <td>${item.duration}m</td>
                             <td>${getPriorityIcon(item.priorityLevel.name)}</td>
                             <td>
-                                <button type="button" class="btn btn-sm btn-outline-success bi bi-check" onclick="taskDone(${item.id});"></button>
-                                <button type="button" class="btn btn-sm btn-outline-success bi bi-x" onclick="taskNotToday(${item.id});"></button>
+                                <div class="dropdown">
+                                    <button class="btn tn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                        Aktion
+                                    </button>
+                                    <div class="dropdown-menu" aria-labelledby="dropdownMenu">
+                                        <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskDone(${item.id});">Erledigt</button>
+                                        <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskNotToday(${item.id});">Nicht Heute</button>
+                                    </div>
+                                </div>
                             </td>
                         </tr>
                     `;
@@ -67,10 +74,17 @@ function loadAllTable() {
                         <td>${item.duration}m</td>
                         <td>${getPriorityIcon(item.priorityLevel.name)}</td>
                         <td>
-                            <button type="button" class="btn btn-sm btn-outline-success bi bi-check" onclick="taskDone(${item.id});"></button>
-                            <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-pencil" onclick="taskEdit(${item.id});"></button>
-                            <button disabled type="button" class="btn btn-sm btn-outline-success bi bi-trash" onclick="taskDelete(${item.id});"></button>
-                        </td>
+                            <div class="dropdown">
+                                <button class="btn tn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    Aktion
+                                </button>
+                                <div class="dropdown-menu" aria-labelledby="dropdownMenu">
+                                    <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskDone(${item.id});">Erledigt</button>
+                                    <button disabled type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskEdit(${item.id});">Bearbeiten</button>
+                                    <button disabled type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskDelete(${item.id});">Löschen</button>
+                                </div>
+                            </div>
+                                                    </td>
                     </tr>
                 `;
                 $tableBody.append(row); // Append the row to the table body
