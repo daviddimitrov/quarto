@@ -24,8 +24,8 @@ function login() {
 }
 
 function logout() {
-    $.cookie("user_id", null, { path: '/' });
-    window.location.href = 'https://daviddimitrov.github.io/quarto/';
+    $.cookie("user_id", 'null', { path: '/' });
+    window.location.href = 'https://daviddimitrov.github.io/quarto/login.html';
 }
 
 function loadTodayTable() {
