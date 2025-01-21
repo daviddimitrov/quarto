@@ -1,7 +1,7 @@
 let apiPrefix = "https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/";
 
 function checkAuth() {
-    if ($.cookie('user_id') == 'null' || typeof $.cookie('user_id') !== 'undefined' || !$.cookie('token')) {
+    if (typeof $.cookie('user_id') == 'undefined') {
         window.location.href = 'https://daviddimitrov.github.io/quarto/login.html';
     }
 }
@@ -24,7 +24,7 @@ function login() {
 }
 
 function logout() {
-    $.cookie("user_id", 'null', { path: '/' });
+    $.removeCookie('user_id'); // successfully deleted
     window.location.href = 'https://daviddimitrov.github.io/quarto/login.html';
 }
 
