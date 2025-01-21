@@ -2,7 +2,7 @@ let apiPrefix = "https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/"
 
 function checkAuth() {
     if ($.cookie('user_id') == 'null') {
-        window.location.href = '/login.html';
+        window.location.href = 'https://daviddimitrov.github.io/quarto/login.html';
     }
 }
 
@@ -15,7 +15,7 @@ function login() {
         dataType: 'json',
         success: function (response) {
             $.cookie('user_id', response.id)
-            window.location.href = '/';
+            window.location.href = 'https://daviddimitrov.github.io/quarto/';
         },
         error: function (xhr, status, error) {
             console.error('Error fetching data:', status, error);
@@ -25,8 +25,7 @@ function login() {
 
 function logout() {
     $.cookie("user_id", null, { path: '/' });
-    url = '/';
-    window.location.href = url;
+    window.location.href = 'https://daviddimitrov.github.io/quarto/';
 }
 
 function loadTodayTable() {
