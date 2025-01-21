@@ -100,3 +100,7 @@ button:hover{
 .dropdown-toggle {
     border: none;
 }
+
+.login {
+    max-width: 500px;
+}

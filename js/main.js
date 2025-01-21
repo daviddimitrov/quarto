@@ -1,5 +1,11 @@
 let apiPrefix = "https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/";
 
+function checkAuth() {
+    const targetUrl = '/login.html';
+    // Weiterleitung
+    window.location.href = targetUrl;
+}
+
 function loadTodayTable() {
     startLoadingScreen();
     const apiEndpointToday = apiPrefix + 'user/867054409/tasks/today';
