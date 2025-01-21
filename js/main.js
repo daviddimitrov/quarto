@@ -1,15 +1,39 @@
 let apiPrefix = "https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/";
 
 function checkAuth() {
-    const targetUrl = '/login.html';
-    // Weiterleitung
-    window.location.href = targetUrl;
+    if ($.cookie('user_id') == 'null') {
+        window.location.href = '/login.html';
+    }
+}
+
+function login() {
+    userName = $('#loginName').val();
+    const apiEndpointAll = apiPrefix + 'user?user_name=' + userName;
+    $.ajax({
+        url: apiEndpointAll,
+        method: 'GET',
+        dataType: 'json',
+        success: function (response) {
+            $.cookie('user_id', response.id)
+            window.location.href = '/';
+        },
+        error: function (xhr, status, error) {
+            console.error('Error fetching data:', status, error);
+        }
+    });
+}
+
+function logout() {
+    $.cookie("user_id", null, { path: '/' });
+    url = '/';
+    window.location.href = url;
 }
 
 function loadTodayTable() {
+    console.log($.cookie('user_id'));
     startLoadingScreen();
-    const apiEndpointToday = apiPrefix + 'user/867054409/tasks/today';
-    
+    const apiEndpointToday = apiPrefix + 'user/' + $.cookie('user_id') + '/tasks/today';
+
     $.ajax({
         url: apiEndpointToday,
         method: 'GET',
@@ -62,7 +86,7 @@ function loadTodayTable() {
 function loadAllTable() {
     startLoadingScreen();
     // All
-    const apiEndpointAll = apiPrefix + 'user/867054409/tasks';
+    const apiEndpointAll = apiPrefix + 'user/' + $.cookie('user_id') + '/tasks';
     $.ajax({
         url: apiEndpointAll,
         method: 'GET',
@@ -113,7 +137,7 @@ function taskDone(taskId) {
         url: apiEndpoint,
         method: 'PATCH',
         contentType: 'application/json',
-        success: function(data, textStatus, xhr) {
+        success: function (data, textStatus, xhr) {
             if (xhr.status === 202) {
                 loadTodayTable();
             }
@@ -140,7 +164,7 @@ function taskNotToday(taskId) {
         url: apiEndpoint,
         method: 'PATCH',
         contentType: 'application/json',
-        success: function(data, textStatus, xhr) {
+        success: function (data, textStatus, xhr) {
             if (xhr.status === 202) {
                 loadTodayTable();
             }
@@ -163,7 +187,7 @@ function taskDelete(taskId) {
         url: apiEndpoint,
         method: 'DELETE',
         contentType: 'application/json',
-        success: function(data, textStatus, xhr) {
+        success: function (data, textStatus, xhr) {
             if (xhr.status === 202) {
                 loadAllTable();
             }
@@ -175,7 +199,7 @@ function taskDelete(taskId) {
     });
 }
 
-function addTask() {   
+function addTask() {
     startLoadingScreen();
     name = $('#inputTask').val();
     priorityLevelId = $('#selectPriority').val();
@@ -187,7 +211,7 @@ function addTask() {
 
     task = {
         priority_level_id: priorityLevelId,
-        user_id: 867054409,
+        user_id: $.cookie('user_id'),
         name: name,
         duration: duration,
         dueDate: dueDate,
@@ -200,7 +224,7 @@ function addTask() {
         method: 'POST',
         contentType: 'application/json',
         data: JSON.stringify(task), // Aufgabe als JSON-String senden
-        success: function(data, textStatus, xhr) {
+        success: function (data, textStatus, xhr) {
             $('#exampleModalCenter').modal('hide');
             if (xhr.status === 201) {
                 emptyForm();
@@ -214,16 +238,16 @@ function addTask() {
     });
 }
 
-function refreshToday() {    
+function refreshToday() {
     startLoadingScreen();
-    const userId = 867054409
+    const userId = $.cookie('user_id')
     const apiEndpoint = apiPrefix + `user/${userId}/tasks/today`;
 
     $.ajax({
         url: apiEndpoint,
         method: 'PATCH',
         contentType: 'application/json',
-        success: function(data, textStatus, xhr) {
+        success: function (data, textStatus, xhr) {
             if (xhr.status === 202) {
                 loadTodayTable();
             }
