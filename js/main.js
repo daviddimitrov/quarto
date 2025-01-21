@@ -1,7 +1,7 @@
 let apiPrefix = "https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/";
 
 function checkAuth() {
-    if ($.cookie('user_id') == 'null') {
+    if ($.cookie('user_id') == 'null' || typeof $.cookie('user_id') !== 'undefined' || !$.cookie('token')) {
         window.location.href = 'https://daviddimitrov.github.io/quarto/login.html';
     }
 }
