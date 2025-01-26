@@ -14,7 +14,7 @@ function login() {
         method: 'GET',
         dataType: 'json',
         success: function (response) {
-            $.cookie('user_id', response.id, { expires: 30 }),
+            $.cookie('user_id', response.id, { expires: 30 });
             window.location.href = 'https://daviddimitrov.github.io/quarto/';
         },
         error: function (xhr, status, error) {
