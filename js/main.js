@@ -65,6 +65,8 @@ function loadTodayTable() {
                                     <div class="dropdown-menu" aria-labelledby="dropdownMenu">
                                         <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskDone(${item.id});">Erledigt</button>
                                         <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskNotToday(${item.id});">Nicht Heute</button>
+                                        <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskTomorrow(${item.id});">Morgen</button>
+                                        <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskNextWeek(${item.id});">Nächste Woche</button>
                                     </div>
                                 </div>
                             </td>
