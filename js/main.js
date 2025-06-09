@@ -110,10 +110,11 @@ function loadAllTable() {
                                     <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskDone(${item.id});">Erledigt</button>
                                     <button disabled type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskEdit(${item.id});">Bearbeiten</button>
                                     <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="startTaskDelete('${item.name}', ${item.id});">Löschen</button>
+                                    <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskTomorrow(${item.id});">Morgen</button>
                                     <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskNextWeek(${item.id});">Nächste Woche</button>
                                 </div>
                             </div>
-                                                    </td>
+                        </td>
                     </tr>
                 `;
                 $tableBody.append(row); // Append the row to the table body
@@ -153,6 +154,27 @@ function taskNextWeek(taskId) {
     startLoadingScreen();
 
     const apiEndpoint = apiPrefix + `task/${taskId}/next-week`;
+
+    $.ajax({
+        url: apiEndpoint,
+        method: 'PATCH',
+        contentType: 'application/json',
+        success: function (data, textStatus, xhr) {
+            if (xhr.status === 202) {
+                loadTodayTable();
+            }
+            stopLoadingScreen();
+        },
+        error: function (xhr, status, error) {
+            console.error('Error adding task:', status, error);
+        }
+    });
+}
+
+function taskTomorrow(taskId) {
+    startLoadingScreen();
+
+    const apiEndpoint = apiPrefix + `task/${taskId}/tomorrow`;
 
     $.ajax({
         url: apiEndpoint,
