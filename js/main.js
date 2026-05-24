@@ -24,7 +24,7 @@ function login() {
 }
 
 function logout() {
-    $.removeCookie('user_id'); // successfully deleted
+    $.removeCookie('user_id');
     window.location.href = 'https://daviddimitrov.github.io/quarto/login.html';
 }
 
@@ -39,10 +39,9 @@ function loadTodayTable() {
         dataType: 'json',
         success: function (response) {
             const $tableBody = $('tbody');
-            $tableBody.empty(); // Clear existing rows if any
+            $tableBody.empty();
 
             if (response.length === 0) {
-                // Add a row with the "Nothing to do today." message
                 const emptyRow = `
                     <tr>
                         <td colspan="5" style="text-align: center;">Nix 🎉</td>
@@ -51,7 +50,6 @@ function loadTodayTable() {
                 $tableBody.append(emptyRow);
             } else {
                 response.forEach(item => {
-                    // Build a new row
                     const row = `
                         <tr>
                             <td>${item.name}</td>
@@ -60,7 +58,6 @@ function loadTodayTable() {
                             <td>
                                 <div class="dropdown">
                                     <button class="btn tn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                        
                                     </button>
                                     <div class="dropdown-menu" aria-labelledby="dropdownMenu">
                                         <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskDone(${item.id});">Erledigt</button>
@@ -72,7 +69,7 @@ function loadTodayTable() {
                             </td>
                         </tr>
                     `;
-                    $tableBody.append(row); // Append the row to the table body
+                    $tableBody.append(row);
                 });
             }
             stopLoadingScreen();
@@ -86,7 +83,6 @@ function loadTodayTable() {
 
 function loadAllTable() {
     startLoadingScreen();
-    // All
     const apiEndpointAll = apiPrefix + 'user/' + $.cookie('user_id') + '/tasks';
     $.ajax({
         url: apiEndpointAll,
@@ -94,10 +90,9 @@ function loadAllTable() {
         dataType: 'json',
         success: function (response) {
             const $tableBody = $('tbody');
-            $tableBody.empty(); // Clear existing rows if any
+            $tableBody.empty();
 
             response.forEach(item => {
-                // Build a new row
                 const row = `
                     <tr>
                         <td>${item.name}</td>
@@ -106,11 +101,10 @@ function loadAllTable() {
                         <td>
                             <div class="dropdown">
                                 <button class="btn tn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                    
                                 </button>
                                 <div class="dropdown-menu" aria-labelledby="dropdownMenu">
                                     <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskDone(${item.id});">Erledigt</button>
-                                    <button disabled type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskEdit(${item.id});">Bearbeiten</button>
+                                    <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskEdit(${item.id});">Bearbeiten</button>
                                     <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="startTaskDelete('${item.name}', ${item.id});">Löschen</button>
                                     <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskTomorrow(${item.id});">Morgen</button>
                                     <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskNextWeek(${item.id});">Nächste Woche</button>
@@ -119,7 +113,7 @@ function loadAllTable() {
                         </td>
                     </tr>
                 `;
-                $tableBody.append(row); // Append the row to the table body
+                $tableBody.append(row);
             });
             stopLoadingScreen();
         },
@@ -133,9 +127,7 @@ function loadAllTable() {
 
 function taskDone(taskId) {
     startLoadingScreen();
-
     const apiEndpoint = apiPrefix + `task/${taskId}/done`;
-
     $.ajax({
         url: apiEndpoint,
         method: 'PATCH',
@@ -154,9 +146,7 @@ function taskDone(taskId) {
 
 function taskNextWeek(taskId) {
     startLoadingScreen();
-
     const apiEndpoint = apiPrefix + `task/${taskId}/next-week`;
-
     $.ajax({
         url: apiEndpoint,
         method: 'PATCH',
@@ -175,9 +165,7 @@ function taskNextWeek(taskId) {
 
 function taskTomorrow(taskId) {
     startLoadingScreen();
-
     const apiEndpoint = apiPrefix + `task/${taskId}/tomorrow`;
-
     $.ajax({
         url: apiEndpoint,
         method: 'PATCH',
@@ -202,9 +190,7 @@ function startTaskDelete(task, taskId) {
 
 function taskNotToday(taskId) {
     startLoadingScreen();
-
     const apiEndpoint = apiPrefix + `task/${taskId}/today`;
-
     $.ajax({
         url: apiEndpoint,
         method: 'PATCH',
@@ -223,11 +209,8 @@ function taskNotToday(taskId) {
 
 function taskDelete(taskId) {
     startLoadingScreen();
-
     $('#deleteTaskModal').modal('hide');
-
     const apiEndpoint = apiPrefix + `task/${taskId}`;
-
     $.ajax({
         url: apiEndpoint,
         method: 'DELETE',
@@ -240,6 +223,57 @@ function taskDelete(taskId) {
         },
         error: function (xhr, status, error) {
             console.error('Error adding task:', status, error);
+        }
+    });
+}
+
+function taskEdit(taskId) {
+    const apiEndpoint = apiPrefix + `task/${taskId}`;
+    $.ajax({
+        url: apiEndpoint,
+        method: 'GET',
+        dataType: 'json',
+        success: function (item) {
+            $('#editTaskId').val(item.id);
+            $('#editInputTask').val(item.name);
+            $('#editSelectPriority').val(item.priorityLevel.id);
+            $('#editPickDueDate').val(item.dueDate);
+            $('#editInputFrequency').val(item.rhythm);
+            $('#editInputDuration').val(item.duration);
+            $('#editTaskModal').modal('show');
+        },
+        error: function (xhr, status, error) {
+            console.error('Error fetching task:', status, error);
+        }
+    });
+}
+
+function saveTaskEdit() {
+    startLoadingScreen();
+    const taskId = $('#editTaskId').val();
+
+    const task = {
+        priorityLevel: { id: parseInt($('#editSelectPriority').val()) },
+        name: $('#editInputTask').val(),
+        duration: parseInt($('#editInputDuration').val()),
+        dueDate: $('#editPickDueDate').val(),
+        rhythm: parseInt($('#editInputFrequency').val()),
+        today: 0
+    };
+
+    $.ajax({
+        url: apiPrefix + `task/${taskId}`,
+        method: 'PUT',
+        contentType: 'application/json',
+        data: JSON.stringify(task),
+        success: function (data, textStatus, xhr) {
+            $('#editTaskModal').modal('hide');
+            loadAllTable();
+            stopLoadingScreen();
+        },
+        error: function (xhr, status, error) {
+            console.error('Error updating task:', status, error);
+            stopLoadingScreen();
         }
     });
 }
@@ -268,13 +302,13 @@ function addTask() {
         url: apiEndpoint,
         method: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify(task), // Aufgabe als JSON-String senden
+        data: JSON.stringify(task),
         success: function (data, textStatus, xhr) {
             $('#exampleModalCenter').modal('hide');
             if (xhr.status === 201) {
                 emptyForm();
             }
-            loadAllTable()
+            loadAllTable();
             stopLoadingScreen();
         },
         error: function (xhr, status, error) {
@@ -285,7 +319,7 @@ function addTask() {
 
 function refreshToday() {
     startLoadingScreen();
-    const userId = $.cookie('user_id')
+    const userId = $.cookie('user_id');
     const apiEndpoint = apiPrefix + `user/${userId}/tasks/today`;
 
     $.ajax({
@@ -304,7 +338,6 @@ function refreshToday() {
     });
 }
 
-// Helper function to map priority level to an icon
 function getPriorityIcon(priorityName) {
     switch (priorityName) {
         case 'ASAP':
@@ -322,9 +355,9 @@ function getPriorityIcon(priorityName) {
 
 function getRelativeDate(dateStr) {
     try {
-        const dueDate = new Date(dateStr); // Das Datum aus der übergebenen Zeichenkette erstellen
+        const dueDate = new Date(dateStr);
         const today = new Date();
-        const delta = Math.floor((dueDate - today) / (1000 * 60 * 60 * 24)) + 1; // Differenz in Tagen
+        const delta = Math.floor((dueDate - today) / (1000 * 60 * 60 * 24)) + 1;
 
         if (delta === 0) {
             return "heute";
@@ -338,7 +371,7 @@ function getRelativeDate(dateStr) {
             return `vor ${-delta} Tagen`;
         }
     } catch (error) {
-        return "Ungültiges Datumsformat. Bitte ein Datum im Format 'YYYY-MM-DD' übergeben.";
+        return "Ungültiges Datumsformat.";
     }
 }
 
