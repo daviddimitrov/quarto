@@ -134,7 +134,7 @@ function buildRow(item, view) {
         ]
         : [
             btn('Erledigt', `runTaskAction('done', [${item.id}])`),
-            btn('Bearbeiten', `taskEdit(${item.id})`, true),
+            btn('Bearbeiten', `taskEdit(${item.id})`),
             btn('Löschen', `startTaskDelete([${item.id}])`),
             btn('Morgen', `runTaskAction('tomorrow', [${item.id}])`),
             btn('Nächste Woche', `runTaskAction('next-week', [${item.id}])`),
@@ -198,6 +198,55 @@ function startTaskDelete(taskIds) {
         runTaskAction('delete', taskIds);
     });
     $('#deleteTaskModal').modal('show');
+}
+
+function taskEdit(taskId) {
+    $.ajax({
+        url: apiPrefix + `task/${taskId}`,
+        method: 'GET',
+        dataType: 'json',
+        success: function (item) {
+            $('#editTaskId').val(item.id);
+            $('#editInputTask').val(item.name);
+            $('#editSelectPriority').val(item.priorityLevel.id);
+            $('#editPickDueDate').val(item.dueDate);
+            $('#editInputFrequency').val(item.rhythm);
+            $('#editInputDuration').val(item.duration);
+            $('#editTaskModal').modal('show');
+        },
+        error: function (xhr, status, error) {
+            console.error('Error fetching task:', status, error);
+        }
+    });
+}
+
+function saveTaskEdit() {
+    startLoadingScreen();
+    const taskId = $('#editTaskId').val();
+
+    const task = {
+        priorityLevel: { id: parseInt($('#editSelectPriority').val()) },
+        name: $('#editInputTask').val(),
+        duration: parseInt($('#editInputDuration').val()),
+        dueDate: $('#editPickDueDate').val(),
+        rhythm: parseInt($('#editInputFrequency').val()),
+        today: 0
+    };
+
+    $.ajax({
+        url: apiPrefix + `task/${taskId}`,
+        method: 'PUT',
+        contentType: 'application/json',
+        data: JSON.stringify(task),
+        success: function () {
+            $('#editTaskModal').modal('hide');
+            reloadCurrentView();
+        },
+        error: function (xhr, status, error) {
+            console.error('Error updating task:', status, error);
+            stopLoadingScreen();
+        }
+    });
 }
 
 function addTask() {
