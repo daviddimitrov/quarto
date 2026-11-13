@@ -1,5 +1,20 @@
 let apiPrefix = "https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/";
 
+// Aktuelle Ansicht: 'today' oder 'all'
+let currentView = 'today';
+
+// Ausgewählte Task-IDs für Mehrfachbearbeitung
+const selectedIds = new Set();
+
+// Alle Aktionen an einer Stelle, für Einzel- und Mehrfachbearbeitung
+const TASK_ACTIONS = {
+    'done':      { method: 'PATCH',  path: id => `task/${id}/done` },
+    'not-today': { method: 'PATCH',  path: id => `task/${id}/today` },
+    'tomorrow':  { method: 'PATCH',  path: id => `task/${id}/tomorrow` },
+    'next-week': { method: 'PATCH',  path: id => `task/${id}/next-week` },
+    'delete':    { method: 'DELETE', path: id => `task/${id}` },
+};
+
 function checkAuth() {
     if (typeof $.cookie('user_id') == 'undefined') {
         window.location.href = 'https://daviddimitrov.github.io/quarto/login.html';
@@ -28,8 +43,27 @@ function logout() {
     window.location.href = 'https://daviddimitrov.github.io/quarto/login.html';
 }
 
+// ---------- Ansichten ----------
+
+function setView(view) {
+    currentView = view;
+    $('.nav-link').removeClass('active');
+    $(view === 'all' ? '#all-link' : '#today-link').addClass('active');
+    $('.table-header').text(view === 'all' ? 'Alle Aufgaben' : 'Heutige Aufgaben');
+    // Ansicht in der URL merken, damit auch ein Browser-Reload auf "Alle" bleibt
+    history.replaceState(null, '', view === 'all' ? '#alle' : '#heute');
+    reloadCurrentView();
+}
+
+function reloadCurrentView() {
+    if (currentView === 'all') {
+        loadAllTable();
+    } else {
+        loadTodayTable();
+    }
+}
+
 function loadTodayTable() {
-    console.log($.cookie('user_id'));
     startLoadingScreen();
     const apiEndpointToday = apiPrefix + 'user/' + $.cookie('user_id') + '/tasks/today';
 
@@ -38,47 +72,12 @@ function loadTodayTable() {
         method: 'GET',
         dataType: 'json',
         success: function (response) {
-            const $tableBody = $('tbody');
-            $tableBody.empty(); // Clear existing rows if any
-
-            if (response.length === 0) {
-                // Add a row with the "Nothing to do today." message
-                const emptyRow = `
-                    <tr>
-                        <td colspan="5" style="text-align: center;">Nix 🎉</td>
-                    </tr>
-                `;
-                $tableBody.append(emptyRow);
-            } else {
-                response.forEach(item => {
-                    // Build a new row
-                    const row = `
-                        <tr>
-                            <td>${item.name}</td>
-                            <td style="font-size: small;">${getRelativeDate(item.dueDate)}</td>
-                            <td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>
-                            <td>
-                                <div class="dropdown">
-                                    <button class="btn tn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                        
-                                    </button>
-                                    <div class="dropdown-menu" aria-labelledby="dropdownMenu">
-                                        <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskDone(${item.id});">Erledigt</button>
-                                        <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskNotToday(${item.id});">Nicht Heute</button>
-                                        <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskTomorrow(${item.id});">Morgen</button>
-                                        <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskNextWeek(${item.id});">Nächste Woche</button>
-                                    </div>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                    $tableBody.append(row); // Append the row to the table body
-                });
-            }
+            renderTable(response, 'today');
             stopLoadingScreen();
         },
         error: function (xhr, status, error) {
             console.error('Error fetching data:', status, error);
+            stopLoadingScreen();
         }
     });
     $('#addTaskButton').hide();
@@ -86,162 +85,119 @@ function loadTodayTable() {
 
 function loadAllTable() {
     startLoadingScreen();
-    // All
     const apiEndpointAll = apiPrefix + 'user/' + $.cookie('user_id') + '/tasks';
     $.ajax({
         url: apiEndpointAll,
         method: 'GET',
         dataType: 'json',
         success: function (response) {
-            const $tableBody = $('tbody');
-            $tableBody.empty(); // Clear existing rows if any
-
-            response.forEach(item => {
-                // Build a new row
-                const row = `
-                    <tr>
-                        <td>${item.name}</td>
-                        <td style="font-size: small;">${getRelativeDate(item.dueDate)}</td>
-                        <td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>
-                        <td>
-                            <div class="dropdown">
-                                <button class="btn tn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                    
-                                </button>
-                                <div class="dropdown-menu" aria-labelledby="dropdownMenu">
-                                    <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskDone(${item.id});">Erledigt</button>
-                                    <button disabled type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskEdit(${item.id});">Bearbeiten</button>
-                                    <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="startTaskDelete('${item.name}', ${item.id});">Löschen</button>
-                                    <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskTomorrow(${item.id});">Morgen</button>
-                                    <button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="taskNextWeek(${item.id});">Nächste Woche</button>
-                                </div>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-                $tableBody.append(row); // Append the row to the table body
-            });
+            renderTable(response, 'all');
             stopLoadingScreen();
         },
         error: function (xhr, status, error) {
             console.error('Error fetching data:', status, error);
+            stopLoadingScreen();
         }
     });
 
     $('#addTaskButton').show();
 }
 
-function taskDone(taskId) {
+function renderTable(items, view) {
+    const $tableBody = $('tbody');
+    $tableBody.empty();
+    clearSelection();
+
+    if (items.length === 0) {
+        $tableBody.append(`
+            <tr>
+                <td colspan="5" style="text-align: center;">Nix 🎉</td>
+            </tr>
+        `);
+        return;
+    }
+
+    items.forEach(item => $tableBody.append(buildRow(item, view)));
+    updateBulkBar();
+}
+
+function buildRow(item, view) {
+    const btn = (label, onclick, disabled = false) =>
+        `<button ${disabled ? 'disabled' : ''} type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="${onclick}">${label}</button>`;
+
+    const menu = view === 'today'
+        ? [
+            btn('Erledigt', `runTaskAction('done', [${item.id}])`),
+            btn('Nicht Heute', `runTaskAction('not-today', [${item.id}])`),
+            btn('Morgen', `runTaskAction('tomorrow', [${item.id}])`),
+            btn('Nächste Woche', `runTaskAction('next-week', [${item.id}])`),
+        ]
+        : [
+            btn('Erledigt', `runTaskAction('done', [${item.id}])`),
+            btn('Bearbeiten', `taskEdit(${item.id})`, true),
+            btn('Löschen', `startTaskDelete([${item.id}])`),
+            btn('Morgen', `runTaskAction('tomorrow', [${item.id}])`),
+            btn('Nächste Woche', `runTaskAction('next-week', [${item.id}])`),
+        ];
+
+    return `
+        <tr data-id="${item.id}" data-name="${escapeHtml(item.name)}">
+            <td>${escapeHtml(item.name)}</td>
+            <td style="font-size: small;">${getRelativeDate(item.dueDate)}</td>
+            <td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>
+            <td>
+                <div class="dropdown">
+                    <button class="btn tn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"></button>
+                    <div class="dropdown-menu">
+                        ${menu.join('\n')}
+                    </div>
+                </div>
+            </td>
+            <td class="text-end pe-3" style="width: 1%;">
+                <div class="d-flex align-items-center justify-content-end" style="height: 35px;">
+                    <input type="checkbox" class="form-check-input m-0 task-select" value="${item.id}">
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+// ---------- Aktionen ----------
+
+// Führt eine Aktion für eine oder mehrere Tasks aus und lädt danach die aktuelle Ansicht neu
+function runTaskAction(action, taskIds) {
+    const config = TASK_ACTIONS[action];
+    if (!config || taskIds.length === 0) return;
+
     startLoadingScreen();
 
-    const apiEndpoint = apiPrefix + `task/${taskId}/done`;
-
-    $.ajax({
-        url: apiEndpoint,
-        method: 'PATCH',
+    const requests = taskIds.map(id => $.ajax({
+        url: apiPrefix + config.path(id),
+        method: config.method,
         contentType: 'application/json',
-        success: function (data, textStatus, xhr) {
-            if (xhr.status === 202) {
-                loadTodayTable();
-            }
-            stopLoadingScreen();
-        },
-        error: function (xhr, status, error) {
-            console.error('Error adding task:', status, error);
+    }));
+
+    Promise.allSettled(requests).then(results => {
+        const failed = results.filter(r => r.status === 'rejected').length;
+        if (failed > 0) {
+            console.error(`${failed} von ${taskIds.length} Aktionen (${action}) fehlgeschlagen`);
+            alert(`${failed} von ${taskIds.length} Aufgaben konnten nicht aktualisiert werden.`);
         }
+        reloadCurrentView();
     });
 }
 
-function taskNextWeek(taskId) {
-    startLoadingScreen();
+function startTaskDelete(taskIds) {
+    const label = taskIds.length === 1
+        ? `"${$(`tr[data-id="${taskIds[0]}"]`).data('name')}"`
+        : `${taskIds.length} Aufgaben`;
 
-    const apiEndpoint = apiPrefix + `task/${taskId}/next-week`;
-
-    $.ajax({
-        url: apiEndpoint,
-        method: 'PATCH',
-        contentType: 'application/json',
-        success: function (data, textStatus, xhr) {
-            if (xhr.status === 202) {
-                loadTodayTable();
-            }
-            stopLoadingScreen();
-        },
-        error: function (xhr, status, error) {
-            console.error('Error adding task:', status, error);
-        }
+    $('#toBeDeletedTaskName').text(label);
+    $('#toBeDeletedTaskButton').off('click').on('click', function () {
+        $('#deleteTaskModal').modal('hide');
+        runTaskAction('delete', taskIds);
     });
-}
-
-function taskTomorrow(taskId) {
-    startLoadingScreen();
-
-    const apiEndpoint = apiPrefix + `task/${taskId}/tomorrow`;
-
-    $.ajax({
-        url: apiEndpoint,
-        method: 'PATCH',
-        contentType: 'application/json',
-        success: function (data, textStatus, xhr) {
-            if (xhr.status === 202) {
-                loadTodayTable();
-            }
-            stopLoadingScreen();
-        },
-        error: function (xhr, status, error) {
-            console.error('Error adding task:', status, error);
-        }
-    });
-}
-
-function startTaskDelete(task, taskId) {
-    $('#toBeDeletedTaskName').text(task);
-    $("#toBeDeletedTaskButton").attr("onclick", "taskDelete(" + taskId + ")");
     $('#deleteTaskModal').modal('show');
-}
-
-function taskNotToday(taskId) {
-    startLoadingScreen();
-
-    const apiEndpoint = apiPrefix + `task/${taskId}/today`;
-
-    $.ajax({
-        url: apiEndpoint,
-        method: 'PATCH',
-        contentType: 'application/json',
-        success: function (data, textStatus, xhr) {
-            if (xhr.status === 202) {
-                loadTodayTable();
-            }
-            stopLoadingScreen();
-        },
-        error: function (xhr, status, error) {
-            console.error('Error adding task:', status, error);
-        }
-    });
-}
-
-function taskDelete(taskId) {
-    startLoadingScreen();
-
-    $('#deleteTaskModal').modal('hide');
-
-    const apiEndpoint = apiPrefix + `task/${taskId}`;
-
-    $.ajax({
-        url: apiEndpoint,
-        method: 'DELETE',
-        contentType: 'application/json',
-        success: function (data, textStatus, xhr) {
-            if (xhr.status === 202) {
-                loadAllTable();
-            }
-            stopLoadingScreen();
-        },
-        error: function (xhr, status, error) {
-            console.error('Error adding task:', status, error);
-        }
-    });
 }
 
 function addTask() {
@@ -274,11 +230,11 @@ function addTask() {
             if (xhr.status === 201) {
                 emptyForm();
             }
-            loadAllTable()
-            stopLoadingScreen();
+            reloadCurrentView();
         },
         error: function (xhr, status, error) {
             console.error('Error adding task:', status, error);
+            stopLoadingScreen();
         }
     });
 }
@@ -292,16 +248,66 @@ function refreshToday() {
         url: apiEndpoint,
         method: 'PATCH',
         contentType: 'application/json',
-        success: function (data, textStatus, xhr) {
-            if (xhr.status === 202) {
-                loadTodayTable();
-            }
-            stopLoadingScreen();
+        success: function () {
+            reloadCurrentView();
         },
         error: function (xhr, status, error) {
-            console.error('Error adding task:', status, error);
+            console.error('Error refreshing today:', status, error);
+            stopLoadingScreen();
         }
     });
+}
+
+// ---------- Mehrfachauswahl ----------
+
+function toggleSelection(taskId, checked) {
+    if (checked) {
+        selectedIds.add(taskId);
+    } else {
+        selectedIds.delete(taskId);
+    }
+    updateBulkBar();
+}
+
+function clearSelection() {
+    selectedIds.clear();
+    $('.task-select').prop('checked', false);
+    updateBulkBar();
+}
+
+function bulkAction(action) {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+
+    if (action === 'delete') {
+        startTaskDelete(ids);
+    } else {
+        runTaskAction(action, ids);
+    }
+}
+
+function updateBulkBar() {
+    const count = selectedIds.size;
+    const $bar = $('#bulk-bar');
+
+    $bar.find('.bulk-btn').prop('disabled', count === 0);
+    $('#bulk-count').text(count > 0 ? `${count} ausgewählt` : '');
+
+    // Nur Aktionen zeigen, die zur aktuellen Ansicht passen
+    $bar.find('[data-view]').each(function () {
+        $(this).toggle($(this).data('view') === currentView);
+    });
+}
+
+// ---------- Helfer ----------
+
+function escapeHtml(text) {
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 // Helper function to map priority level to an icon

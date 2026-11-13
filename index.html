@@ -46,9 +46,20 @@
         <div class="card p-4 shadow-lg" style="width: 100%;">
             <div id="card-content">
                 <h3 class="text-center mb-4 table-header">Heutige Aufgaben</h3>
-                <table class="table table-hover">
+
+                <!-- Leiste für Mehrfachbearbeitung, immer sichtbar, Buttons aktiv sobald etwas ausgewählt ist -->
+                <div id="bulk-bar" class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                    <button disabled type="button" class="btn btn-sm btn-outline-success bulk-btn" onclick="bulkAction('done');">Erledigt</button>
+                    <button disabled type="button" class="btn btn-sm btn-outline-success bulk-btn" data-view="today" onclick="bulkAction('not-today');">Nicht Heute</button>
+                    <button disabled type="button" class="btn btn-sm btn-outline-success bulk-btn" onclick="bulkAction('tomorrow');">Morgen</button>
+                    <button disabled type="button" class="btn btn-sm btn-outline-success bulk-btn" onclick="bulkAction('next-week');">Nächste Woche</button>
+                    <button disabled type="button" class="btn btn-sm btn-outline-danger bulk-btn" data-view="all" onclick="bulkAction('delete');">Löschen</button>
+                    <span id="bulk-count" class="small text-muted ms-auto me-3"></span>
+                </div>
+
+                <table class="table table-hover align-middle">
                     <tbody>
-                        
+
                     </tbody>
                 </table>
                 <button type="button" class="btn btn-sm btn-outline-success bi bi-plus" data-bs-toggle="modal" data-bs-target="#exampleModalCenter" id="addTaskButton"></button>
@@ -65,11 +76,11 @@
         <div class="modal-dialog modal-sm">
             <div class="modal-content">
                 <div class="modal-body">
-                    Soll "<span id="toBeDeletedTaskName">Hamster waschen</span>" wirklich gelöscht werden?
+                    Soll <span id="toBeDeletedTaskName">"Hamster waschen"</span> wirklich gelöscht werden?
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-sm btn-outline-success" data-bs-dismiss="modal">Nein</button>
-                    <button type="button" class="btn btn-sm btn-outline-success" id="toBeDeletedTaskButton" data-id="0">Ja</button>
+                    <button type="button" class="btn btn-sm btn-outline-success" id="toBeDeletedTaskButton">Ja</button>
                 </div>
             </div>
         </div>
@@ -85,7 +96,7 @@
                     <button type="button" class="btn btn-sm btn-outline-success bi bi-x close" data-dismiss="modal" aria-label="Close" data-bs-toggle="modal" data-bs-target="#exampleModalCenter"></button>
                 </div>
                 <div class="modal-body">
-                    
+
                     <form id="add-task-form">
                         <div class="container-fluid">
                             <div class="row" style="padding-bottom: 20px;">
@@ -145,34 +156,26 @@
     <script>
         $(document).ready(function () {
             checkAuth();
-            loadTodayTable();
-        
+            setView(location.hash === '#alle' ? 'all' : 'today');
 
             $("#add-task-form").submit(function(event){
                 event.preventDefault();
                 addTask();
             });
 
-            $('.nav-link').click(function(event) {
+            $('#today-link').click(function(event) {
                 event.preventDefault();
-                $('.nav-link').removeClass('active');
-                switch (event.target.id) {
-                    case 'today-link':
-                        $('#today-link').addClass('active');
-                        $('.table-header').text('Heutige Aufgaben');
-                        loadTodayTable();
-                        break;
-                    case 'all-link':
-                        $('#all-link').addClass('active');
-                        $('.table-header').text('Alle Aufgaben');
-                        loadAllTable();
-                        break;
-                    default:
-                        console.log(`Sorry, we are out of ${expr}.`);
-                }
+                setView('today');
             });
-            
-        });
+
+            $('#all-link').click(function(event) {
+                event.preventDefault();
+                setView('all');
+            });
+
+            $(document).on('change', '.task-select', function () {
+                toggleSelection(Number($(this).val()), this.checked);
+            });        });
     </script>
 
 
