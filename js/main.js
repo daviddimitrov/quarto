@@ -10,6 +10,7 @@ const selectedIds = new Set();
 const TASK_ACTIONS = {
     'done':      { method: 'PATCH',  path: id => `user/${$.cookie('user_id')}/task/${id}/done` },
     'not-today': { method: 'PATCH',  path: id => `user/${$.cookie('user_id')}/task/${id}/today` },
+    'to-today':  { method: 'PATCH',  path: id => `user/${$.cookie('user_id')}/task/${id}/today` },
     'tomorrow':  { method: 'PATCH',  path: id => `user/${$.cookie('user_id')}/task/${id}/tomorrow` },
     'next-week': { method: 'PATCH',  path: id => `user/${$.cookie('user_id')}/task/${id}/next-week` },
     'delete':    { method: 'DELETE', path: id => `user/${$.cookie('user_id')}/task/${id}` },
@@ -98,13 +99,17 @@ function loadView(view) {
     });
     $('#addTaskButton').toggle(view === 'all');
     $('#quick-add').toggle(view === 'today');
+    $('#long-section').toggle(view === 'today');
+    if (view === 'today') {
+        loadLong();
+    }
 }
 
 function loadTodayTable() { loadView('today'); }
 function loadAllTable() { loadView('all'); }
 
 function renderTable(items, view) {
-    const $tableBody = $('tbody');
+    const $tableBody = $('#card-content > table > tbody');
     $tableBody.empty();
     clearSelection();
 
@@ -173,8 +178,10 @@ function runTaskAction(action, taskIds) {
     // In "Heute" verschwindet ein Task bei jeder Aktion, in "Alle" nur beim Löschen
     if (currentView === 'today' || action === 'delete') {
         taskIds.forEach(id => $(`tr[data-id="${id}"]`).fadeOut(150, function () { $(this).remove(); }));
-        const remaining = (readCache(currentView) || []).filter(t => !taskIds.includes(String(t.id)));
-        writeCache(currentView, remaining);
+        [currentView, 'long'].forEach(view => {
+            const remaining = (readCache(view) || []).filter(t => !taskIds.includes(String(t.id)));
+            writeCache(view, remaining);
+        });
         clearSelection();
     }
 
@@ -308,28 +315,84 @@ function refreshToday() {
     });
 }
 
-// Legt spontane To-dos an, mehrere durch Komma getrennt
-function quickAdd(event) {
-    event.preventDefault();
-    const $input = $('#quickInput');
+// ---------- Langfristige Liste ----------
+
+function loadLong() {
+    const cached = readCache('long');
+    if (cached) {
+        renderLong(cached);
+    }
+    $.ajax({
+        url: apiPrefix + 'user/' + $.cookie('user_id') + '/tasks/long',
+        method: 'GET',
+        dataType: 'json',
+        success: function (response) {
+            writeCache('long', response);
+            if (JSON.stringify(response) !== JSON.stringify(cached)) {
+                renderLong(response);
+            }
+        },
+        error: function (xhr, status, error) {
+            console.error('Error fetching long-term tasks:', status, error);
+        }
+    });
+}
+
+function renderLong(items) {
+    const $body = $('#long-body');
+    $body.empty();
+    if (items.length === 0) {
+        $body.append('<tr><td colspan="2" class="text-muted small" style="text-align: center;">Nichts geplant</td></tr>');
+        return;
+    }
+    items.forEach(item => $body.append(buildLongRow(item)));
+}
+
+function buildLongRow(item) {
+    const btn = (label, onclick) =>
+        `<button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="${onclick}">${label}</button>`;
+    return `
+        <tr data-id="${item.id}" data-name="${escapeHtml(item.name)}">
+            <td>${escapeHtml(item.name)}</td>
+            <td class="text-end" style="width: 1%;">
+                <div class="dropdown">
+                    <button class="btn btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"></button>
+                    <div class="dropdown-menu dropdown-menu-end">
+                        ${btn('Heute', `runTaskAction('to-today', ['${item.id}'])`)}
+                        ${btn('Erledigt', `runTaskAction('done', ['${item.id}'])`)}
+                        ${btn('Löschen', `startTaskDelete(['${item.id}'])`)}
+                    </div>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+// ---------- Schnelle Eingabe ----------
+
+// Legt To-dos an, mehrere durch Komma getrennt. kind: 'today' (spontan) oder 'long' (langfristig)
+function addQuick(kind, $input) {
     const names = $input.val().split(',').map(s => s.trim()).filter(Boolean);
     if (names.length === 0) return;
     $input.val('');
 
-    const cached = readCache('today') || [];
+    const cached = readCache(kind) || [];
     const maxOrder = cached.reduce((m, t) => Math.max(m, t.ordnung || 0), 0);
     const created = names.map((name, i) => ({
         id: `tmp-${Date.now()}-${i}`,
         name: name,
         dueDate: null,
         priorityLevel: { id: null, name: null },
-        today: 1,
-        spontan: true,
+        today: kind === 'today' ? 1 : 0,
+        spontan: kind === 'today',
+        longTerm: kind === 'long',
         ordnung: maxOrder + 1000 * (i + 1),
     }));
     const updated = cached.concat(created);
-    writeCache('today', updated);
-    if (currentView === 'today') {
+    writeCache(kind, updated);
+    if (kind === 'long') {
+        renderLong(updated);
+    } else if (currentView === 'today') {
         renderTable(updated, 'today');
     }
 
@@ -337,7 +400,13 @@ function quickAdd(event) {
         url: apiPrefix + 'task',
         method: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify({ user_id: $.cookie('user_id'), name: t.name, spontan: true, ordnung: t.ordnung }),
+        data: JSON.stringify({
+            user_id: $.cookie('user_id'),
+            name: t.name,
+            spontan: t.spontan,
+            longTerm: t.longTerm,
+            ordnung: t.ordnung,
+        }),
     }));
 
     Promise.allSettled(requests).then(results => {
@@ -347,6 +416,16 @@ function quickAdd(event) {
         }
         reloadCurrentView();
     });
+}
+
+function quickAdd(event) {
+    event.preventDefault();
+    addQuick('today', $('#quickInput'));
+}
+
+function longAdd(event) {
+    event.preventDefault();
+    addQuick('long', $('#longInput'));
 }
 
 // ---------- Mehrfachauswahl ----------
