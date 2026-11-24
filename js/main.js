@@ -150,8 +150,8 @@ function buildRow(item, view) {
         <tr data-id="${item.id}" data-name="${escapeHtml(item.name)}">
             ${view === 'today' ? '<td class="drag-handle" style="width: 1%; cursor: grab; touch-action: none;"><i class="bi bi-grip-vertical text-muted"></i></td>' : ''}
             <td>${escapeHtml(item.name)}</td>
-            <td style="font-size: small;">${getRelativeDate(item.dueDate)}</td>
-            <td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>
+            <td class="text-muted" style="font-size: small; white-space: nowrap;">${getRelativeDate(item.dueDate)}</td>
+            ${view === 'today' ? '' : `<td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>`}
             <td>
                 <div class="dropdown">
                     <button class="btn tn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"></button>
