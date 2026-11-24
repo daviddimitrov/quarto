@@ -75,10 +75,6 @@
     height: 200px;
 }
 
-#loading {
-    display: flex;
-}
-
 button {
     border-color: #40c351 !important;
     color: #40c351 !important;

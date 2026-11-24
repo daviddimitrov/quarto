@@ -78,9 +78,6 @@ function loadView(view) {
     const cached = readCache(view);
     if (cached) {
         renderTable(cached, view);
-        stopLoadingScreen();
-    } else {
-        startLoadingScreen();
     }
 
     const path = view === 'all' ? '/tasks' : '/tasks/today';
@@ -94,11 +91,9 @@ function loadView(view) {
             if (currentView === view && changed) {
                 renderTable(response, view);
             }
-            stopLoadingScreen();
         },
         error: function (xhr, status, error) {
             console.error('Error fetching data:', status, error);
-            stopLoadingScreen();
         }
     });
     $('#addTaskButton').toggle(view === 'all');
@@ -232,7 +227,6 @@ function taskEdit(taskId) {
 }
 
 function saveTaskEdit() {
-    startLoadingScreen();
     const taskId = $('#editTaskId').val();
 
     const task = {
@@ -255,13 +249,11 @@ function saveTaskEdit() {
         },
         error: function (xhr, status, error) {
             console.error('Error updating task:', status, error);
-            stopLoadingScreen();
         }
     });
 }
 
 function addTask() {
-    startLoadingScreen();
     name = $('#inputTask').val();
     priorityLevelId = $('#selectPriority').val();
     dueDate = $('#pickDueDate').val();
@@ -294,13 +286,11 @@ function addTask() {
         },
         error: function (xhr, status, error) {
             console.error('Error adding task:', status, error);
-            stopLoadingScreen();
         }
     });
 }
 
 function refreshToday() {
-    startLoadingScreen();
     const userId = $.cookie('user_id')
     const apiEndpoint = apiPrefix + `user/${userId}/tasks/today`;
 
@@ -313,7 +303,6 @@ function refreshToday() {
         },
         error: function (xhr, status, error) {
             console.error('Error refreshing today:', status, error);
-            stopLoadingScreen();
         }
     });
 }
@@ -406,16 +395,6 @@ function getRelativeDate(dateStr) {
     } catch (error) {
         return "Ungültiges Datumsformat. Bitte ein Datum im Format 'YYYY-MM-DD' übergeben.";
     }
-}
-
-function startLoadingScreen() {
-    $('#loading').css('display', 'flex');
-    $('#card-content').css('display', 'none');
-}
-
-function stopLoadingScreen() {
-    $('#loading').css('display', 'none');
-    $('#card-content').css('display', 'block');
 }
 
 function emptyForm() {
