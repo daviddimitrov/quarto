@@ -51,31 +51,19 @@
                     <input id="quickInput" type="text" class="form-control" placeholder="aufräumen, einkaufen, post" enterkeyhint="done">
                 </form>
 
-                <!-- Leiste für Mehrfachbearbeitung, immer sichtbar, Buttons aktiv sobald etwas ausgewählt ist -->
-                <div id="bulk-bar" class="d-flex flex-wrap align-items-center gap-2 mb-3">
-                    <button disabled type="button" class="btn btn-sm btn-outline-success bulk-btn" onclick="bulkAction('done');">Erledigt</button>
-                    <button disabled type="button" class="btn btn-sm btn-outline-success bulk-btn" data-view="today" onclick="bulkAction('not-today');">Nicht Heute</button>
-                    <button disabled type="button" class="btn btn-sm btn-outline-success bulk-btn" onclick="bulkAction('tomorrow');">Morgen</button>
-                    <button disabled type="button" class="btn btn-sm btn-outline-success bulk-btn" onclick="bulkAction('next-week');">Nächste Woche</button>
-                    <button disabled type="button" class="btn btn-sm btn-outline-danger bulk-btn" data-view="all" onclick="bulkAction('delete');">Löschen</button>
-                    <span id="bulk-count" class="small text-muted ms-auto me-3"></span>
-                </div>
-
                 <table class="table table-hover align-middle">
                     <tbody></tbody>
                 </table>
                 <button type="button" class="btn btn-sm btn-outline-success bi bi-plus" data-bs-toggle="modal" data-bs-target="#exampleModalCenter" id="addTaskButton"></button>
-                <button type="button" class="btn btn-sm btn-outline-success bi bi-arrow-clockwise" onclick="refreshToday();"></button>
 
-                <!-- Langfristige To-dos, immer unter der Heute-Liste -->
-                <div id="long-section" class="mt-5">
-                    <h5 class="mb-3">Langfristig</h5>
-                    <form id="long-add" class="mb-3" onsubmit="event.preventDefault(); if (window.longAdd) longAdd(event);" autocomplete="off">
-                        <input id="longInput" type="text" class="form-control" placeholder="Steuererklärung, Fahrrad reparieren" enterkeyhint="done">
-                    </form>
-                    <table class="table table-hover align-middle">
+                <!-- Langfristige To-dos, direkt unter der Heute-Liste -->
+                <div id="long-section" style="border-top: 2px solid #dee2e6;">
+                    <table class="table table-hover align-middle mb-2">
                         <tbody id="long-body"></tbody>
                     </table>
+                    <form id="long-add" onsubmit="event.preventDefault(); if (window.longAdd) longAdd(event);" autocomplete="off">
+                        <input id="longInput" type="text" class="form-control" placeholder="Langfristig: Steuererklärung, Fahrrad reparieren" enterkeyhint="done">
+                    </form>
                 </div>
             </div>
         </div>

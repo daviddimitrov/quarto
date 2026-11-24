@@ -160,11 +160,6 @@ function buildRow(item, view) {
                     </div>
                 </div>
             </td>
-            <td class="text-end pe-3" style="width: 1%;">
-                <div class="d-flex align-items-center justify-content-end" style="height: 35px;">
-                    <input type="checkbox" class="form-check-input m-0 task-select" value="${item.id}">
-                </div>
-            </td>
         </tr>
     `;
 }
