@@ -100,3 +100,7 @@ button:hover{
 .login {
     max-width: 500px;
 }
+
+#long-body td {
+    background-color: #e9ecef;
+}
