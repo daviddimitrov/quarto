@@ -56,23 +56,44 @@ function setView(view) {
 }
 
 function reloadCurrentView() {
-    if (currentView === 'all') {
-        loadAllTable();
+    loadView(currentView);
+}
+
+// ---------- Cache (Optimistic UI) ----------
+
+function cacheKey(view) {
+    return `quarto_${view}_${$.cookie('user_id')}`;
+}
+
+function readCache(view) {
+    try { return JSON.parse(localStorage.getItem(cacheKey(view))); } catch (e) { return null; }
+}
+
+function writeCache(view, items) {
+    try { localStorage.setItem(cacheKey(view), JSON.stringify(items)); } catch (e) {}
+}
+
+// Zeigt sofort den Cache und lädt im Hintergrund den aktuellen Stand
+function loadView(view) {
+    const cached = readCache(view);
+    if (cached) {
+        renderTable(cached, view);
+        stopLoadingScreen();
     } else {
-        loadTodayTable();
+        startLoadingScreen();
     }
-}
 
-function loadTodayTable() {
-    startLoadingScreen();
-    const apiEndpointToday = apiPrefix + 'user/' + $.cookie('user_id') + '/tasks/today';
-
+    const path = view === 'all' ? '/tasks' : '/tasks/today';
     $.ajax({
-        url: apiEndpointToday,
+        url: apiPrefix + 'user/' + $.cookie('user_id') + path,
         method: 'GET',
         dataType: 'json',
         success: function (response) {
-            renderTable(response, 'today');
+            writeCache(view, response);
+            const changed = JSON.stringify(response) !== JSON.stringify(cached);
+            if (currentView === view && changed) {
+                renderTable(response, view);
+            }
             stopLoadingScreen();
         },
         error: function (xhr, status, error) {
@@ -80,28 +101,11 @@ function loadTodayTable() {
             stopLoadingScreen();
         }
     });
-    $('#addTaskButton').hide();
+    $('#addTaskButton').toggle(view === 'all');
 }
 
-function loadAllTable() {
-    startLoadingScreen();
-    const apiEndpointAll = apiPrefix + 'user/' + $.cookie('user_id') + '/tasks';
-    $.ajax({
-        url: apiEndpointAll,
-        method: 'GET',
-        dataType: 'json',
-        success: function (response) {
-            renderTable(response, 'all');
-            stopLoadingScreen();
-        },
-        error: function (xhr, status, error) {
-            console.error('Error fetching data:', status, error);
-            stopLoadingScreen();
-        }
-    });
-
-    $('#addTaskButton').show();
-}
+function loadTodayTable() { loadView('today'); }
+function loadAllTable() { loadView('all'); }
 
 function renderTable(items, view) {
     const $tableBody = $('tbody');
@@ -168,8 +172,15 @@ function buildRow(item, view) {
 function runTaskAction(action, taskIds) {
     const config = TASK_ACTIONS[action];
     if (!config || taskIds.length === 0) return;
+    taskIds = taskIds.map(String);
 
-    startLoadingScreen();
+    // In "Heute" verschwindet ein Task bei jeder Aktion, in "Alle" nur beim Löschen
+    if (currentView === 'today' || action === 'delete') {
+        taskIds.forEach(id => $(`tr[data-id="${id}"]`).fadeOut(150, function () { $(this).remove(); }));
+        const remaining = (readCache(currentView) || []).filter(t => !taskIds.includes(String(t.id)));
+        writeCache(currentView, remaining);
+        clearSelection();
+    }
 
     const requests = taskIds.map(id => $.ajax({
         url: apiPrefix + config.path(id),
