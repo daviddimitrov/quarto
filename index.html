@@ -233,7 +233,7 @@
             });
 
             $(document).on('change', '.task-select', function () {
-                toggleSelection(Number($(this).val()), this.checked);
+                toggleSelection($(this).val(), this.checked);
             });
         });
     </script>

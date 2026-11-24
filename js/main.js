@@ -1,4 +1,4 @@
-let apiPrefix = "https://n6vigzrqtg.execute-api.eu-central-1.amazonaws.com/dev/";
+let apiPrefix = "https://vs7ubni3p3.execute-api.eu-central-1.amazonaws.com/";
 
 // Aktuelle Ansicht: 'today' oder 'all'
 let currentView = 'today';
@@ -8,11 +8,11 @@ const selectedIds = new Set();
 
 // Alle Aktionen an einer Stelle, für Einzel- und Mehrfachbearbeitung
 const TASK_ACTIONS = {
-    'done':      { method: 'PATCH',  path: id => `task/${id}/done` },
-    'not-today': { method: 'PATCH',  path: id => `task/${id}/today` },
-    'tomorrow':  { method: 'PATCH',  path: id => `task/${id}/tomorrow` },
-    'next-week': { method: 'PATCH',  path: id => `task/${id}/next-week` },
-    'delete':    { method: 'DELETE', path: id => `task/${id}` },
+    'done':      { method: 'PATCH',  path: id => `user/${$.cookie('user_id')}/task/${id}/done` },
+    'not-today': { method: 'PATCH',  path: id => `user/${$.cookie('user_id')}/task/${id}/today` },
+    'tomorrow':  { method: 'PATCH',  path: id => `user/${$.cookie('user_id')}/task/${id}/tomorrow` },
+    'next-week': { method: 'PATCH',  path: id => `user/${$.cookie('user_id')}/task/${id}/next-week` },
+    'delete':    { method: 'DELETE', path: id => `user/${$.cookie('user_id')}/task/${id}` },
 };
 
 function checkAuth() {
@@ -127,17 +127,17 @@ function buildRow(item, view) {
 
     const menu = view === 'today'
         ? [
-            btn('Erledigt', `runTaskAction('done', [${item.id}])`),
-            btn('Nicht Heute', `runTaskAction('not-today', [${item.id}])`),
-            btn('Morgen', `runTaskAction('tomorrow', [${item.id}])`),
-            btn('Nächste Woche', `runTaskAction('next-week', [${item.id}])`),
+            btn('Erledigt', `runTaskAction('done', ['${item.id}'])`),
+            btn('Nicht Heute', `runTaskAction('not-today', ['${item.id}'])`),
+            btn('Morgen', `runTaskAction('tomorrow', ['${item.id}'])`),
+            btn('Nächste Woche', `runTaskAction('next-week', ['${item.id}'])`),
         ]
         : [
-            btn('Erledigt', `runTaskAction('done', [${item.id}])`),
-            btn('Bearbeiten', `taskEdit(${item.id})`),
-            btn('Löschen', `startTaskDelete([${item.id}])`),
-            btn('Morgen', `runTaskAction('tomorrow', [${item.id}])`),
-            btn('Nächste Woche', `runTaskAction('next-week', [${item.id}])`),
+            btn('Erledigt', `runTaskAction('done', ['${item.id}'])`),
+            btn('Bearbeiten', `taskEdit('${item.id}')`),
+            btn('Löschen', `startTaskDelete(['${item.id}'])`),
+            btn('Morgen', `runTaskAction('tomorrow', ['${item.id}'])`),
+            btn('Nächste Woche', `runTaskAction('next-week', ['${item.id}'])`),
         ];
 
     return `
@@ -202,7 +202,7 @@ function startTaskDelete(taskIds) {
 
 function taskEdit(taskId) {
     $.ajax({
-        url: apiPrefix + `task/${taskId}`,
+        url: apiPrefix + `user/${$.cookie('user_id')}/task/${taskId}`,
         method: 'GET',
         dataType: 'json',
         success: function (item) {
@@ -234,7 +234,7 @@ function saveTaskEdit() {
     };
 
     $.ajax({
-        url: apiPrefix + `task/${taskId}`,
+        url: apiPrefix + `user/${$.cookie('user_id')}/task/${taskId}`,
         method: 'PUT',
         contentType: 'application/json',
         data: JSON.stringify(task),
