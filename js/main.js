@@ -123,6 +123,7 @@ function renderTable(items, view) {
     }
 
     items.forEach(item => $tableBody.append(buildRow(item, view)));
+    initSortable(view);
     updateBulkBar();
 }
 
@@ -147,6 +148,7 @@ function buildRow(item, view) {
 
     return `
         <tr data-id="${item.id}" data-name="${escapeHtml(item.name)}">
+            ${view === 'today' ? '<td class="drag-handle" style="width: 1%; cursor: grab; touch-action: none;"><i class="bi bi-grip-vertical text-muted"></i></td>' : ''}
             <td>${escapeHtml(item.name)}</td>
             <td style="font-size: small;">${getRelativeDate(item.dueDate)}</td>
             <td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>
@@ -311,6 +313,52 @@ function refreshToday() {
         },
         error: function (xhr, status, error) {
             console.error('Error refreshing today:', status, error);
+        }
+    });
+}
+
+// ---------- Reihenfolge per Drag & Drop ----------
+
+let sortable = null;
+
+function initSortable(view) {
+    if (typeof Sortable === 'undefined') return;
+    if (!sortable) {
+        sortable = Sortable.create(document.querySelector('#card-content > table > tbody'), {
+            handle: '.drag-handle',
+            animation: 150,
+            onEnd: onReorder,
+        });
+    }
+    sortable.option('disabled', view !== 'today');
+}
+
+function onReorder(evt) {
+    if (evt.oldIndex === evt.newIndex) return;
+    const ids = $('#card-content > table > tbody > tr[data-id]').map((_, r) => r.getAttribute('data-id')).get();
+    const byId = Object.fromEntries((readCache('today') || []).map(t => [String(t.id), t]));
+    const id = ids[evt.newIndex];
+    if (!byId[id]) return;
+
+    const prev = byId[ids[evt.newIndex - 1]]?.ordnung;
+    const next = byId[ids[evt.newIndex + 1]]?.ordnung;
+    let ordnung;
+    if (prev == null && next == null) ordnung = 1000;
+    else if (prev == null) ordnung = next - 1000;
+    else if (next == null) ordnung = prev + 1000;
+    else ordnung = (prev + next) / 2;
+
+    byId[id].ordnung = ordnung;
+    writeCache('today', ids.map(i => byId[i]).filter(Boolean));
+
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/task/${id}`,
+        method: 'PUT',
+        contentType: 'application/json',
+        data: JSON.stringify({ ordnung: ordnung }),
+        error: function () {
+            alert('Reihenfolge konnte nicht gespeichert werden.');
+            reloadCurrentView();
         }
     });
 }
