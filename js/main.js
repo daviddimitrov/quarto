@@ -97,6 +97,7 @@ function loadView(view) {
         }
     });
     $('#addTaskButton').toggle(view === 'all');
+    $('#quick-add').toggle(view === 'today');
 }
 
 function loadTodayTable() { loadView('today'); }
@@ -307,6 +308,47 @@ function refreshToday() {
     });
 }
 
+// Legt spontane To-dos an, mehrere durch Komma getrennt
+function quickAdd(event) {
+    event.preventDefault();
+    const $input = $('#quickInput');
+    const names = $input.val().split(',').map(s => s.trim()).filter(Boolean);
+    if (names.length === 0) return;
+    $input.val('');
+
+    const cached = readCache('today') || [];
+    const maxOrder = cached.reduce((m, t) => Math.max(m, t.ordnung || 0), 0);
+    const created = names.map((name, i) => ({
+        id: `tmp-${Date.now()}-${i}`,
+        name: name,
+        dueDate: null,
+        priorityLevel: { id: null, name: null },
+        today: 1,
+        spontan: true,
+        ordnung: maxOrder + 1000 * (i + 1),
+    }));
+    const updated = cached.concat(created);
+    writeCache('today', updated);
+    if (currentView === 'today') {
+        renderTable(updated, 'today');
+    }
+
+    const requests = created.map(t => $.ajax({
+        url: apiPrefix + 'task',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ user_id: $.cookie('user_id'), name: t.name, spontan: true, ordnung: t.ordnung }),
+    }));
+
+    Promise.allSettled(requests).then(results => {
+        const failed = results.filter(r => r.status === 'rejected').length;
+        if (failed > 0) {
+            alert(`${failed} von ${names.length} To-dos konnten nicht angelegt werden.`);
+        }
+        reloadCurrentView();
+    });
+}
+
 // ---------- Mehrfachauswahl ----------
 
 function toggleSelection(taskId, checked) {
@@ -376,6 +418,7 @@ function getPriorityIcon(priorityName) {
 }
 
 function getRelativeDate(dateStr) {
+    if (!dateStr) return '';
     try {
         const dueDate = new Date(dateStr); // Das Datum aus der übergebenen Zeichenkette erstellen
         const today = new Date();

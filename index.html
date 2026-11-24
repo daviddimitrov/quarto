@@ -45,6 +45,11 @@
             <div id="card-content">
                 <h3 class="text-center mb-4 table-header">Heutige Aufgaben</h3>
 
+                <!-- Schnelle Eingabe für spontane To-dos, nur in "Heute" -->
+                <form id="quick-add" class="mb-3" onsubmit="quickAdd(event);" autocomplete="off">
+                    <input id="quickInput" type="text" class="form-control" placeholder="aufräumen, einkaufen, post" enterkeyhint="done">
+                </form>
+
                 <!-- Leiste für Mehrfachbearbeitung, immer sichtbar, Buttons aktiv sobald etwas ausgewählt ist -->
                 <div id="bulk-bar" class="d-flex flex-wrap align-items-center gap-2 mb-3">
                     <button disabled type="button" class="btn btn-sm btn-outline-success bulk-btn" onclick="bulkAction('done');">Erledigt</button>
