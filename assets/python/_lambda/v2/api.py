@@ -38,11 +38,25 @@ def get_item(user_id, task_id):
     return table.get_item(Key=key(user_id, task_id)).get("Item")
 
 
+NUMERIC = {"duration", "rhythm", "priority", "today"}
+
+
 def parse(body):
+    body = dict(body)
+    if isinstance(body.get("priorityLevel"), dict):
+        body["priority"] = body["priorityLevel"].get("id")
     data = {}
     for k, v in body.items():
-        if k in FIELDS:
-            data[FIELDS[k]] = Decimal(str(v)) if isinstance(v, float) else v
+        if k not in FIELDS:
+            continue
+        field = FIELDS[k]
+        if v == "":
+            v = None
+        elif field in NUMERIC and isinstance(v, str):
+            v = int(v)
+        elif isinstance(v, float):
+            v = Decimal(str(v))
+        data[field] = v
     return data
 
 
@@ -65,20 +79,31 @@ def to_dto(t, user_id, profile):
 
 def list_users(p, body):
     profiles = table.scan(FilterExpression=Attr("SK").eq("PROFILE"))["Items"]
-    return 200, [{"id": i["PK"].removeprefix("USER#"), "name": i["name"],
-                  "default_duration": i.get("default_duration")} for i in profiles]
+    users = [{"id": i["PK"].removeprefix("USER#"), "name": i["name"],
+              "default_duration": i.get("default_duration")} for i in profiles]
+    name = p.get("user_name")
+    if name is None:
+        return 200, users
+    match = next((u for u in users if u["name"].lower() == name.lower()), None)
+    if match is None:
+        return 404, {"message": "User not found"}
+    return 200, match
 
 
-def list_tasks(p, body, only_today=False):
+def list_tasks(p, body, mode="all"):
     user_id = p["userId"]
     profile = get_profile(user_id)
     if profile is None:
         return 404, {"message": "User not found"}
     tasks = [i for i in query_all(f"USER#{user_id}") if i["SK"].startswith("TASK#")]
-    if only_today:
+    if mode == "today":
         tasks = [t for t in tasks if t.get("today") == 1]
         tasks.sort(key=lambda t: t.get("ordnung", NO_VALUE))
+    elif mode == "long":
+        tasks = [t for t in tasks if t.get("long_term") and t.get("today") != 1]
+        tasks.sort(key=lambda t: t.get("ordnung", NO_VALUE))
     else:
+        tasks = [t for t in tasks if not t.get("long_term")]
         tasks.sort(key=lambda t: (t.get("due_date") or "9999-12-31",
                                   int(t.get("priority") or NO_VALUE),
                                   int(t.get("rhythm") or NO_VALUE)))
@@ -177,7 +202,8 @@ def shift(days):
 ROUTES = {
     "GET /user": list_users,
     "GET /user/{userId}/tasks": list_tasks,
-    "GET /user/{userId}/tasks/today": lambda p, b: list_tasks(p, b, only_today=True),
+    "GET /user/{userId}/tasks/today": lambda p, b: list_tasks(p, b, mode="today"),
+    "GET /user/{userId}/tasks/long": lambda p, b: list_tasks(p, b, mode="long"),
     "PATCH /user/{userId}/tasks/today": collect,
     "POST /task": create_task,
     "GET /user/{userId}/task/{taskId}": get_task,
@@ -197,7 +223,8 @@ def lambda_handler(event, context):
     else:
         try:
             body = json.loads(event.get("body") or "{}")
-            status, payload = handler(event.get("pathParameters") or {}, body)
+            params = {**(event.get("queryStringParameters") or {}), **(event.get("pathParameters") or {})}
+            status, payload = handler(params, body)
         except Exception as e:
             print(f"Error: {e}")
             status, payload = 500, {"message": "An error occurred", "error": str(e)}
