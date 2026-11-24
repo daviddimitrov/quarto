@@ -12,8 +12,8 @@
     <link rel="stylesheet" href="https://code.jquery.com/ui/1.14.1/themes/base/jquery-ui.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js" type="text/javascript"></script>
-    <script src="./js/main.js"></script>
-    <link rel="stylesheet" href="./css/main.css">
+    <script src="./js/main.js?v=0f88d5c"></script>
+    <link rel="stylesheet" href="./css/main.css?v=0f88d5c">
 </head>
 
 <body>
@@ -46,7 +46,7 @@
                 <h3 class="text-center mb-4 table-header">Heutige Aufgaben</h3>
 
                 <!-- Schnelle Eingabe für spontane To-dos, nur in "Heute" -->
-                <form id="quick-add" class="mb-3" onsubmit="quickAdd(event);" autocomplete="off">
+                <form id="quick-add" class="mb-3" onsubmit="event.preventDefault(); if (window.quickAdd) quickAdd(event);" autocomplete="off">
                     <input id="quickInput" type="text" class="form-control" placeholder="aufräumen, einkaufen, post" enterkeyhint="done">
                 </form>
 
