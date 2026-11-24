@@ -147,7 +147,7 @@ function buildRow(item, view) {
         ];
 
     return `
-        <tr data-id="${item.id}" data-name="${escapeHtml(item.name)}">
+        <tr data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-long="${item.longTerm ? 'true' : 'false'}">
             ${view === 'today' ? '<td class="drag-handle" style="width: 1%; cursor: grab; touch-action: none;"><i class="bi bi-grip-vertical text-muted"></i></td>' : ''}
             <td>${escapeHtml(item.name)}</td>
             <td class="text-muted" style="font-size: small; white-space: nowrap;">${getRelativeDate(item.dueDate)}</td>
@@ -314,45 +314,67 @@ function refreshToday() {
 
 // ---------- Reihenfolge per Drag & Drop ----------
 
-let sortable = null;
+let sortables = null;
 
 function initSortable(view) {
     if (typeof Sortable === 'undefined') return;
-    if (!sortable) {
-        sortable = Sortable.create(document.querySelector('#card-content > table > tbody'), {
-            handle: '.drag-handle',
-            animation: 150,
-            onEnd: onReorder,
-        });
+    if (!sortables) {
+        const common = { handle: '.drag-handle', animation: 150, onEnd: onDrop };
+        sortables = [
+            Sortable.create(document.querySelector('#card-content > table > tbody'), {
+                ...common,
+                group: { name: 'tasks', pull: true, put: true },
+            }),
+            // In die langfristige Liste dürfen nur langfristige To-dos zurück
+            Sortable.create(document.getElementById('long-body'), {
+                ...common,
+                group: { name: 'tasks', pull: true, put: (to, from, dragEl) => dragEl.dataset.long === 'true' },
+            }),
+        ];
     }
-    sortable.option('disabled', view !== 'today');
+    sortables.forEach(s => s.option('disabled', view !== 'today'));
 }
 
-function onReorder(evt) {
-    if (evt.oldIndex === evt.newIndex) return;
-    const ids = $('#card-content > table > tbody > tr[data-id]').map((_, r) => r.getAttribute('data-id')).get();
-    const byId = Object.fromEntries((readCache('today') || []).map(t => [String(t.id), t]));
-    const id = ids[evt.newIndex];
-    if (!byId[id]) return;
+function onDrop(evt) {
+    const fromKey = evt.from.id === 'long-body' ? 'long' : 'today';
+    const toKey = evt.to.id === 'long-body' ? 'long' : 'today';
+    if (fromKey === toKey && evt.oldIndex === evt.newIndex) return;
 
-    const prev = byId[ids[evt.newIndex - 1]]?.ordnung;
-    const next = byId[ids[evt.newIndex + 1]]?.ordnung;
+    const id = evt.item.getAttribute('data-id');
+    const fromCache = readCache(fromKey) || [];
+    const task = fromCache.find(t => String(t.id) === id);
+    if (!task) return;
+
+    const toCache = fromKey === toKey ? fromCache : (readCache(toKey) || []);
+    const byId = Object.fromEntries(toCache.map(t => [String(t.id), t]));
+    byId[id] = task;
+    const ids = [...evt.to.querySelectorAll('tr[data-id]')].map(r => r.getAttribute('data-id'));
+    const idx = ids.indexOf(id);
+
+    const prev = byId[ids[idx - 1]]?.ordnung;
+    const next = byId[ids[idx + 1]]?.ordnung;
     let ordnung;
     if (prev == null && next == null) ordnung = 1000;
     else if (prev == null) ordnung = next - 1000;
     else if (next == null) ordnung = prev + 1000;
     else ordnung = (prev + next) / 2;
 
-    byId[id].ordnung = ordnung;
-    writeCache('today', ids.map(i => byId[i]).filter(Boolean));
+    task.ordnung = ordnung;
+    task.today = toKey === 'today' ? 1 : 0;
+    writeCache(toKey, ids.map(i => byId[i]).filter(Boolean));
+    if (fromKey !== toKey) {
+        writeCache(fromKey, fromCache.filter(t => String(t.id) !== id));
+    }
+    renderTable(readCache('today') || [], 'today');
+    renderLong(readCache('long') || []);
 
     $.ajax({
         url: apiPrefix + `user/${$.cookie('user_id')}/task/${id}`,
         method: 'PUT',
         contentType: 'application/json',
-        data: JSON.stringify({ ordnung: ordnung }),
+        data: JSON.stringify({ ordnung: ordnung, today: task.today }),
         error: function () {
-            alert('Reihenfolge konnte nicht gespeichert werden.');
+            alert('Verschieben konnte nicht gespeichert werden.');
             reloadCurrentView();
         }
     });
@@ -385,18 +407,20 @@ function renderLong(items) {
     const $body = $('#long-body');
     $body.empty();
     if (items.length === 0) {
-        $body.append('<tr><td colspan="2" class="text-muted small" style="text-align: center;">Nichts geplant</td></tr>');
+        $body.append('<tr><td colspan="3" class="text-muted small" style="text-align: center;">Nichts geplant</td></tr>');
         return;
     }
     items.forEach(item => $body.append(buildLongRow(item)));
+    initSortable(currentView);
 }
 
 function buildLongRow(item) {
     const btn = (label, onclick) =>
         `<button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="${onclick}">${label}</button>`;
     return `
-        <tr data-id="${item.id}" data-name="${escapeHtml(item.name)}">
-            <td>${escapeHtml(item.name)}</td>
+        <tr data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-long="true">
+            <td class="drag-handle" style="width: 1%; cursor: grab; touch-action: none;"><i class="bi bi-grip-vertical text-muted"></i></td>
+            <td class="text-muted">${escapeHtml(item.name)}</td>
             <td class="text-end" style="width: 1%;">
                 <div class="dropdown">
                     <button class="btn btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"></button>
