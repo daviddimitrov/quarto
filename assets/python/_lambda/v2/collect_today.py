@@ -21,6 +21,10 @@ def query_all(pk):
         kwargs["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
 
 
+def kontext(t):
+    return t.get("kontext", "privat")
+
+
 def collect_for_user(user_id, nightly):
     pk = f"USER#{user_id}"
     items = query_all(pk)
@@ -28,33 +32,40 @@ def collect_for_user(user_id, nightly):
     if profile is None:
         return None
     budget = int(profile.get("default_duration", 15))
-    today = datetime.now(ZoneInfo("Europe/Berlin")).date().isoformat()
+    now = datetime.now(ZoneInfo("Europe/Berlin"))
+    today = now.date().isoformat()
+    workday = now.weekday() < 5
     tasks = [i for i in items if i["SK"].startswith("TASK#")]
 
+    # Private spontane To-dos verfallen nachts, ASAP-Tasks auf Arbeit bleiben bis erledigt
     if nightly:
+        expired = [t for t in tasks if t.get("spontan") and kontext(t) == "privat"]
         with table.batch_writer() as batch:
-            for t in tasks:
-                if t.get("spontan"):
-                    batch.delete_item(Key={"PK": pk, "SK": t["SK"]})
-        tasks = [t for t in tasks if not t.get("spontan")]
+            for t in expired:
+                batch.delete_item(Key={"PK": pk, "SK": t["SK"]})
+        tasks = [t for t in tasks if t not in expired]
 
-    candidates = [
-        t for t in tasks
-        if not t.get("spontan") and not t.get("long_term")
-        and t.get("due_date") and t["due_date"] <= today
-    ]
-    candidates.sort(key=lambda t: (
+    def is_due(t):
+        return (not t.get("spontan") and not t.get("long_term")
+                and t.get("due_date") and t["due_date"] <= today)
+
+    # Privat: nach Priorität, Fälligkeit und Rhythmus bis zum Zeitbudget
+    private = [t for t in tasks if kontext(t) == "privat" and is_due(t)]
+    private.sort(key=lambda t: (
         int(t.get("priority") or NO_VALUE),
         t["due_date"],
         int(t.get("rhythm") or NO_VALUE),
     ))
-
     chosen, total = set(), 0
-    for t in candidates:
+    for t in private:
         d = int(t.get("duration") or 0)
         if total + d <= budget:
             total += d
             chosen.add(t["SK"])
+
+    # Arbeit: an Werktagen alles Fällige, ohne Budget
+    work = [t for t in tasks if kontext(t) == "arbeit" and is_due(t)] if workday else []
+    chosen.update(t["SK"] for t in work)
 
     for t in tasks:
         if t.get("spontan"):
@@ -66,7 +77,7 @@ def collect_for_user(user_id, nightly):
                 UpdateExpression="SET today = :v",
                 ExpressionAttributeValues={":v": new},
             )
-    return {"selected": len(chosen), "minutes": total, "budget": budget}
+    return {"privat": len(chosen) - len(work), "minutes": total, "budget": budget, "arbeit": len(work)}
 
 
 def response(status, body):

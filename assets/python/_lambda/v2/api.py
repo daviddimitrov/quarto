@@ -12,7 +12,7 @@ PRIORITIES = {1: "ASAP", 2: "HIGH", 3: "MEDIUM", 4: "LOW"}
 FIELDS = {
     "name": "name", "duration": "duration", "dueDate": "due_date", "due_date": "due_date",
     "rhythm": "rhythm", "today": "today", "priority_level_id": "priority", "priority": "priority",
-    "ordnung": "ordnung", "spontan": "spontan", "longTerm": "long_term", "long_term": "long_term",
+    "ordnung": "ordnung", "spontan": "spontan", "longTerm": "long_term", "long_term": "long_term", "kontext": "kontext",
 }
 
 
@@ -74,6 +74,7 @@ def to_dto(t, user_id, profile):
         "ordnung": t.get("ordnung"),
         "spontan": t.get("spontan", False),
         "longTerm": t.get("long_term", False),
+        "kontext": t.get("kontext", "privat"),
     }
 
 
@@ -96,6 +97,8 @@ def list_tasks(p, body, mode="all"):
     if profile is None:
         return 404, {"message": "User not found"}
     tasks = [i for i in query_all(f"USER#{user_id}") if i["SK"].startswith("TASK#")]
+    wanted = p.get("kontext") or "privat"
+    tasks = [t for t in tasks if t.get("kontext", "privat") == wanted]
     if mode == "today":
         tasks = [t for t in tasks if t.get("today") == 1]
         tasks.sort(key=lambda t: t.get("ordnung", NO_VALUE))
