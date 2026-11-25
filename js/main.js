@@ -16,32 +16,126 @@ const TASK_ACTIONS = {
     'delete':    { method: 'DELETE', path: id => `user/${$.cookie('user_id')}/task/${id}` },
 };
 
+// ---------- Login über Cognito ----------
+
+const COGNITO_URL = 'https://cognito-idp.eu-central-1.amazonaws.com/';
+const COGNITO_CLIENT_ID = 'p38f8tnjpppdfpmppstuu2jqt';
+const LOGIN_PAGE = './login.html';
+const HOME_PAGE = './';
+const TOKEN_KEYS = ['quarto_id_token', 'quarto_token_exp', 'quarto_refresh_token'];
+
+function cognitoCall(target, body) {
+    return $.ajax({
+        url: COGNITO_URL,
+        method: 'POST',
+        headers: { 'X-Amz-Target': 'AWSCognitoIdentityProviderService.' + target },
+        contentType: 'application/x-amz-json-1.1',
+        data: JSON.stringify(body),
+        dataType: 'json',
+    });
+}
+
+function saveTokens(result) {
+    localStorage.setItem('quarto_id_token', result.IdToken);
+    localStorage.setItem('quarto_token_exp', String(Date.now() + result.ExpiresIn * 1000));
+    if (result.RefreshToken) {
+        localStorage.setItem('quarto_refresh_token', result.RefreshToken);
+    }
+}
+
+function tokenExpiresSoon() {
+    return Number(localStorage.getItem('quarto_token_exp') || 0) - Date.now() < 5 * 60 * 1000;
+}
+
+let refreshing = null;
+function refreshTokens() {
+    if (refreshing) return refreshing;
+    const refreshToken = localStorage.getItem('quarto_refresh_token');
+    if (!refreshToken) {
+        logout();
+        return Promise.reject();
+    }
+    refreshing = Promise.resolve(cognitoCall('InitiateAuth', {
+        AuthFlow: 'REFRESH_TOKEN_AUTH',
+        ClientId: COGNITO_CLIENT_ID,
+        AuthParameters: { REFRESH_TOKEN: refreshToken },
+    }))
+        .then(resp => saveTokens(resp.AuthenticationResult))
+        .catch(err => {
+            // 400 = Refresh-Token ungültig oder abgelaufen, sonst eher Netzproblem
+            if (err && err.status === 400) logout();
+            throw err;
+        })
+        .finally(() => { refreshing = null; });
+    return refreshing;
+}
+
+// Token an jeden Aufruf der eigenen API hängen, nicht an Cognito selbst
+$.ajaxSetup({
+    beforeSend: function (xhr, settings) {
+        const token = localStorage.getItem('quarto_id_token');
+        if (token && settings.url.startsWith(apiPrefix)) {
+            xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+        }
+    }
+});
+
+// Bei 401 einmal Token erneuern und neu laden, höchstens einmal pro Minute
+let lastAuthRetry = 0;
+$(document).ajaxError(function (event, xhr, settings) {
+    if (xhr.status === 401 && settings.url.startsWith(apiPrefix) && Date.now() - lastAuthRetry > 60000) {
+        lastAuthRetry = Date.now();
+        refreshTokens().then(() => reloadCurrentView()).catch(() => {});
+    }
+});
+
+// App kommt aus dem Hintergrund zurück
+document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && localStorage.getItem('quarto_refresh_token') && tokenExpiresSoon()) {
+        refreshTokens().then(() => reloadCurrentView()).catch(() => {});
+    }
+});
+
 function checkAuth() {
-    if (typeof $.cookie('user_id') == 'undefined') {
-        window.location.href = 'https://daviddimitrov.github.io/quarto/login.html';
+    if (!localStorage.getItem('quarto_refresh_token') || typeof $.cookie('user_id') == 'undefined') {
+        window.location.href = LOGIN_PAGE;
+        return;
+    }
+    if (tokenExpiresSoon()) {
+        refreshTokens().then(() => reloadCurrentView()).catch(() => {});
     }
 }
 
 function login() {
-    userName = $('#loginName').val();
-    const apiEndpointAll = apiPrefix + 'user?user_name=' + userName;
-    $.ajax({
-        url: apiEndpointAll,
-        method: 'GET',
-        dataType: 'json',
-        success: function (response) {
-            $.cookie('user_id', response.id, { expires: 30 });
-            window.location.href = 'https://daviddimitrov.github.io/quarto/';
-        },
-        error: function (xhr, status, error) {
-            console.error('Error fetching data:', status, error);
-        }
-    });
+    const name = $('#loginName').val().trim();
+    const password = $('#loginPassword').val();
+    $('#loginError').text('');
+    cognitoCall('InitiateAuth', {
+        AuthFlow: 'USER_PASSWORD_AUTH',
+        ClientId: COGNITO_CLIENT_ID,
+        AuthParameters: { USERNAME: name, PASSWORD: password },
+    })
+        .then(function (resp) {
+            saveTokens(resp.AuthenticationResult);
+            return $.ajax({
+                url: apiPrefix + 'user?user_name=' + encodeURIComponent(name),
+                method: 'GET',
+                dataType: 'json',
+            });
+        })
+        .then(function (user) {
+            $.cookie('user_id', user.id, { expires: 365 });
+            window.location.href = HOME_PAGE;
+        })
+        .catch(function () {
+            $('#loginError').text('Login fehlgeschlagen. Name oder Passwort falsch?');
+        });
 }
 
 function logout() {
-    $.removeCookie('user_id'); // successfully deleted
-    window.location.href = 'https://daviddimitrov.github.io/quarto/login.html';
+    $.removeCookie('user_id');
+    TOKEN_KEYS.forEach(k => localStorage.removeItem(k));
+    window.location.href = LOGIN_PAGE;
 }
 
 // ---------- Ansichten ----------
