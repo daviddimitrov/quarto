@@ -199,6 +199,21 @@ def shift(days):
     return handler
 
 
+_LOGIN_CACHE = {}
+
+
+def user_from_token(event):
+    claims = ((((event.get("requestContext") or {}).get("authorizer") or {}).get("jwt") or {}).get("claims")) or {}
+    login = (claims.get("cognito:username") or "").lower()
+    if not login:
+        return None, None
+    if login not in _LOGIN_CACHE:
+        profiles = table.scan(FilterExpression=Attr("SK").eq("PROFILE"))["Items"]
+        match = next((i for i in profiles if i["name"].lower() == login), None)
+        _LOGIN_CACHE[login] = match["PK"].removeprefix("USER#") if match else None
+    return login, _LOGIN_CACHE[login]
+
+
 ROUTES = {
     "GET /user": list_users,
     "GET /user/{userId}/tasks": list_tasks,
@@ -224,7 +239,15 @@ def lambda_handler(event, context):
         try:
             body = json.loads(event.get("body") or "{}")
             params = {**(event.get("queryStringParameters") or {}), **(event.get("pathParameters") or {})}
-            status, payload = handler(params, body)
+            login, uid = user_from_token(event)
+            if uid is None or params.get("userId", uid) != uid:
+                status, payload = 403, {"message": "Forbidden"}
+            else:
+                params["userId"] = uid
+                params["user_name"] = login
+                if isinstance(body, dict):
+                    body["user_id"] = uid
+                status, payload = handler(params, body)
         except Exception as e:
             print(f"Error: {e}")
             status, payload = 500, {"message": "An error occurred", "error": str(e)}
