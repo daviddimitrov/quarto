@@ -286,7 +286,7 @@ function buildRow(item, view) {
             <td>${escapeHtml(item.name)}</td>
             <td class="text-muted" style="font-size: small; white-space: nowrap;">${item.deadline ? `<span class="text-danger">${relativeDays(daysUntil(item.deadline))}</span>` : getRelativeDate(item.dueDate)}</td>
             ${isDayView(view) || kontextFor(view) === 'arbeit' ? '' : `<td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>`}
-            <td>
+            <td class="text-end" style="width: 1%;">
                 <div class="dropdown">
                     <button class="btn tn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"></button>
                     <div class="dropdown-menu">
