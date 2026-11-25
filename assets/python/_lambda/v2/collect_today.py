@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import boto3
@@ -67,6 +67,15 @@ def collect_for_user(user_id, nightly):
     work = [t for t in tasks if kontext(t) == "arbeit" and is_due(t)] if workday else []
     chosen.update(t["SK"] for t in work)
 
+    # Langfristige Tasks zwei Tage vor der Deadline nach oben holen, ohne Budget
+    soon = (now.date() + timedelta(days=2)).isoformat()
+    deadline_tasks = [
+        t for t in tasks
+        if t.get("long_term") and t.get("deadline") and t["deadline"] <= soon
+        and (kontext(t) == "privat" or workday)
+    ]
+    chosen.update(t["SK"] for t in deadline_tasks)
+
     for t in tasks:
         if t.get("spontan"):
             continue
@@ -77,7 +86,8 @@ def collect_for_user(user_id, nightly):
                 UpdateExpression="SET today = :v",
                 ExpressionAttributeValues={":v": new},
             )
-    return {"privat": len(chosen) - len(work), "minutes": total, "budget": budget, "arbeit": len(work)}
+    return {"selected": len(chosen), "minutes": total, "budget": budget,
+            "arbeit": len(work), "deadline": len(deadline_tasks)}
 
 
 def response(status, body):
