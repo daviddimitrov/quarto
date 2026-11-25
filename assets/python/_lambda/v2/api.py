@@ -38,7 +38,54 @@ def get_item(user_id, task_id):
     return table.get_item(Key=key(user_id, task_id)).get("Item")
 
 
-NUMERIC = {"duration", "rhythm", "priority", "today"}
+NUMERIC = {"duration", "priority", "today"}
+WEEKDAYS = {"mo": 0, "di": 1, "mi": 2, "do": 3, "fr": 4, "sa": 5, "so": 6}
+WEEKDAY_NAMES = {v: k for k, v in WEEKDAYS.items()}
+MONTH_END = {"eom", "monatsende", "ende", "letzter"}
+
+
+def parse_rhythm(value):
+    """'7' -> alle 7 Tage, 'do' -> jeden Donnerstag, 'eom' -> letzter Tag im Monat."""
+    if value is None or value == "":
+        return None, None
+    s = str(value).strip().lower()
+    if s.isdigit():
+        return int(s), None
+    if s[:2] in WEEKDAYS:
+        return None, f"woche:{WEEKDAYS[s[:2]]}"
+    if s in MONTH_END:
+        return None, "monat:letzter"
+    raise ValueError(f"Unbekannter Rhythmus: {value}")
+
+
+def rhythm_label(t):
+    regel = t.get("regel")
+    if regel and regel.startswith("woche:"):
+        return WEEKDAY_NAMES[int(regel.split(":")[1])]
+    if regel == "monat:letzter":
+        return "eom"
+    return t.get("rhythm")
+
+
+def last_day(year, month):
+    nxt = datetime(year + (month == 12), month % 12 + 1, 1).date()
+    return nxt - timedelta(days=1)
+
+
+def next_due(item, today_date):
+    regel = item.get("regel")
+    due = item.get("due_date")
+    base = max(today_date, datetime.fromisoformat(due).date()) if due else today_date
+    if regel and regel.startswith("woche:"):
+        weekday = int(regel.split(":")[1])
+        return base + timedelta(days=(weekday - base.weekday()) % 7 or 7)
+    if regel == "monat:letzter":
+        end = last_day(base.year, base.month)
+        if base < end:
+            return end
+        return last_day(base.year + (base.month == 12), base.month % 12 + 1)
+    rhythm = int(item.get("rhythm") or 0)
+    return today_date + timedelta(days=rhythm) if rhythm else None
 
 
 def parse(body):
@@ -50,6 +97,9 @@ def parse(body):
         if k not in FIELDS:
             continue
         field = FIELDS[k]
+        if field == "rhythm":
+            data["rhythm"], data["regel"] = parse_rhythm(v)
+            continue
         if v == "":
             v = None
         elif field in NUMERIC and isinstance(v, str):
@@ -69,7 +119,7 @@ def to_dto(t, user_id, profile):
         "name": t["name"],
         "duration": t.get("duration"),
         "dueDate": t.get("due_date"),
-        "rhythm": t.get("rhythm"),
+        "rhythm": rhythm_label(t),
         "today": t.get("today", 0),
         "ordnung": t.get("ordnung"),
         "spontan": t.get("spontan", False),
@@ -167,14 +217,14 @@ def set_done(p, body):
     item = get_item(p["userId"], p["taskId"])
     if item is None:
         return 404, {"message": "Task not found"}
-    rhythm = int(item.get("rhythm") or 0)
-    if rhythm == 0 or item.get("spontan"):
+    nxt = None if item.get("spontan") else next_due(item, today())
+    if nxt is None:
         table.delete_item(Key=key(p["userId"], p["taskId"]))
     else:
         table.update_item(
             Key=key(p["userId"], p["taskId"]),
             UpdateExpression="SET due_date = :d, today = :z",
-            ExpressionAttributeValues={":d": (today() + timedelta(days=rhythm)).isoformat(), ":z": 0},
+            ExpressionAttributeValues={":d": nxt.isoformat(), ":z": 0},
         )
     return 202, {"message": "Task set to done successfully"}
 
