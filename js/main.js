@@ -366,7 +366,7 @@ function saveTaskEdit() {
         name: $('#editInputTask').val(),
         duration: parseInt($('#editInputDuration').val()),
         dueDate: $('#editPickDueDate').val(),
-        rhythm: parseInt($('#editInputFrequency').val()),
+        rhythm: $('#editInputFrequency').val().trim(),
         today: 0
     };
 
