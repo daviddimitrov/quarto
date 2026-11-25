@@ -232,7 +232,7 @@ function loadView(view) {
         $(this).toggleClass('active', $(this).data('kontext') === allKontext);
     });
     $('#quickInput').attr('placeholder', view === 'work' ? 'ASAP: Outlook aufräumen, staffit' : 'aufräumen, einkaufen, post');
-    $('#longInput').attr('placeholder', view === 'work' ? 'Langfristig: Architekturdiagramm, Zertifikat' : 'Langfristig: Steuererklärung, Fahrrad reparieren');
+    $('#longInput').attr('placeholder', view === 'work' ? 'Langfristig: Diagramm bis fr, Zertifikat bis 15.12.' : 'Langfristig: Steuererklärung bis 31.7., Fahrrad');
     if (isDayView(view)) {
         loadLong();
     }
@@ -283,7 +283,7 @@ function buildRow(item, view) {
         <tr data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-long="${item.longTerm ? 'true' : 'false'}">
             ${isDayView(view) ? '<td class="drag-handle" style="width: 1%; cursor: grab; touch-action: none;"><i class="bi bi-grip-vertical text-muted"></i></td>' : ''}
             <td>${escapeHtml(item.name)}</td>
-            <td class="text-muted" style="font-size: small; white-space: nowrap;">${getRelativeDate(item.dueDate)}</td>
+            <td class="text-muted" style="font-size: small; white-space: nowrap;">${item.deadline ? `<span class="text-danger">${relativeDays(daysUntil(item.deadline))}</span>` : getRelativeDate(item.dueDate)}</td>
             ${isDayView(view) || kontextFor(view) === 'arbeit' ? '' : `<td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>`}
             <td>
                 <div class="dropdown">
@@ -541,7 +541,7 @@ function renderLong(items) {
     const $body = $('#long-body');
     $body.empty();
     if (items.length === 0) {
-        $body.append('<tr><td colspan="3" class="text-muted small" style="text-align: center;">Nichts geplant</td></tr>');
+        $body.append('<tr><td colspan="4" class="text-muted small" style="text-align: center;">Nichts geplant</td></tr>');
         return;
     }
     items.forEach(item => $body.append(buildLongRow(item)));
@@ -555,6 +555,7 @@ function buildLongRow(item) {
         <tr data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-long="true">
             <td class="drag-handle" style="width: 1%; cursor: grab; touch-action: none;"><i class="bi bi-grip-vertical text-muted"></i></td>
             <td class="text-muted">${escapeHtml(item.name)}</td>
+            ${deadlineCell(item)}
             <td class="text-end" style="width: 1%;">
                 <div class="dropdown">
                     <button class="btn btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"></button>
@@ -569,6 +570,69 @@ function buildLongRow(item) {
     `;
 }
 
+// ---------- Deadlines ----------
+// START DEADLINE
+const WEEKDAY_SHORT = { so: 0, mo: 1, di: 2, mi: 3, do: 4, fr: 5, sa: 6 };
+
+function startOfToday() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+function addDays(date, days) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + days);
+    return d;
+}
+
+function isoDate(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// "Diagramm bis fr" -> { name: "Diagramm", deadline: "2026-11-27" }
+function parseDeadline(text) {
+    const m = text.match(/^(.*\S)\s+bis\s+(.+)$/i);
+    if (!m) return { name: text, deadline: null };
+    const when = m[2].trim().toLowerCase();
+    const today = startOfToday();
+    let d = null;
+    if (when === 'heute') d = today;
+    else if (when === 'morgen') d = addDays(today, 1);
+    else if (when === 'übermorgen') d = addDays(today, 2);
+    else if (/^[a-zäöü]+$/.test(when) && WEEKDAY_SHORT[when.slice(0, 2)] !== undefined) {
+        d = addDays(today, (WEEKDAY_SHORT[when.slice(0, 2)] - today.getDay() + 7) % 7);
+    } else {
+        const dm = when.match(/^(\d{1,2})\.(\d{1,2})\.?(\d{2}|\d{4})?$/);
+        if (dm) {
+            const year = dm[3] ? Number(dm[3].length === 2 ? '20' + dm[3] : dm[3]) : today.getFullYear();
+            d = new Date(year, Number(dm[2]) - 1, Number(dm[1]));
+            if (!dm[3] && d < today) d.setFullYear(year + 1);
+        }
+    }
+    if (!d || isNaN(d)) return { name: text, deadline: null };
+    return { name: m[1].trim(), deadline: isoDate(d) };
+}
+
+function daysUntil(iso) {
+    const [y, m, d] = iso.split('-').map(Number);
+    return Math.round((new Date(y, m - 1, d) - startOfToday()) / 86400000);
+}
+
+function relativeDays(days) {
+    if (days === 0) return 'heute';
+    if (days === 1) return 'morgen';
+    if (days === -1) return 'gestern';
+    return days > 1 ? `in ${days} Tagen` : `vor ${-days} Tagen`;
+}
+
+function deadlineCell(item) {
+    if (!item.deadline) return '<td></td>';
+    const days = daysUntil(item.deadline);
+    return `<td class="${days <= 2 ? 'text-danger' : 'text-muted'} text-end" style="font-size: small; white-space: nowrap;">${relativeDays(days)}</td>`;
+}
+// END DEADLINE
+
 // ---------- Schnelle Eingabe ----------
 
 // Legt To-dos an, mehrere durch Komma getrennt. kind: 'today' (spontan) oder 'long' (langfristig)
@@ -580,7 +644,10 @@ function addQuick(kind, $input) {
     const key = kind === 'long' ? 'long' : currentView;
     const cached = readCache(key) || [];
     const maxOrder = cached.reduce((m, t) => Math.max(m, t.ordnung || 0), 0);
-    const created = names.map((name, i) => ({
+    const created = names
+        .map(raw => kind === 'long' ? parseDeadline(raw) : { name: raw, deadline: null })
+        .map(({ name, deadline }, i) => ({
+        deadline: deadline,
         id: `tmp-${Date.now()}-${i}`,
         name: name,
         dueDate: null,
@@ -607,6 +674,7 @@ function addQuick(kind, $input) {
             name: t.name,
             spontan: t.spontan,
             longTerm: t.longTerm,
+            deadline: t.deadline,
             kontext: kontextFor(key === 'long' ? 'long' : currentView),
             ordnung: t.ordnung,
         }),
