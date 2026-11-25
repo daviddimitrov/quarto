@@ -225,6 +225,7 @@ function loadView(view) {
     // Arbeit braucht weder Priorität noch Dauer
     const workForm = view === 'all' && allKontext === 'arbeit';
     $('#selectPriority, #inputDuration, #editSelectPriority, #editInputDuration').closest('[class*="col"]').toggle(!workForm);
+    $('#selectPriority, #inputDuration, #editSelectPriority, #editInputDuration').prop('required', !workForm);
     $('#pickDueDate, #inputFrequency, #editPickDueDate, #editInputFrequency').closest('[class*="col"]')
         .css('flex', workForm ? '0 0 100%' : '')
         .css('max-width', workForm ? '100%' : '');
