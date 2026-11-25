@@ -31,6 +31,9 @@
                         <a class="nav-link active" href="#" id="today-link" data-bs-toggle="collapse" data-bs-target="#navbarNav">Heute</a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="#" id="work-link" data-bs-toggle="collapse" data-bs-target="#navbarNav">Arbeit</a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="#" id="all-link" data-bs-toggle="collapse" data-bs-target="#navbarNav">Alle</a>
                     </li>
                     <li class="nav-item">
@@ -45,6 +48,12 @@
         <div class="card p-4 shadow-lg" style="width: 100%;">
             <div id="card-content">
                 <h3 class="text-center mb-4 table-header">Heutige Aufgaben</h3>
+
+                <!-- Umschalter Privat/Arbeit, nur in "Alle" -->
+                <div id="kontext-toggle" class="btn-group btn-group-sm mb-3 w-100" role="group" style="display: none;">
+                    <button type="button" class="btn btn-outline-success" data-kontext="privat" onclick="setAllKontext('privat')">Privat</button>
+                    <button type="button" class="btn btn-outline-success" data-kontext="arbeit" onclick="setAllKontext('arbeit')">Arbeit</button>
+                </div>
 
                 <!-- Schnelle Eingabe für spontane To-dos, nur in "Heute" -->
                 <form id="quick-add" class="mb-3" onsubmit="event.preventDefault(); if (window.quickAdd) quickAdd(event);" autocomplete="off">
@@ -212,7 +221,7 @@
     <script>
         $(document).ready(function () {
             checkAuth();
-            setView(location.hash === '#alle' ? 'all' : 'today');
+            setView({'#alle': 'all', '#arbeit': 'work'}[location.hash] || 'today');
 
             $("#add-task-form").submit(function(event){
                 event.preventDefault();
@@ -227,6 +236,10 @@
             $('#today-link').click(function(event) {
                 event.preventDefault();
                 setView('today');
+            });
+            $('#work-link').click(function(event) {
+                event.preventDefault();
+                setView('work');
             });
 
             $('#all-link').click(function(event) {

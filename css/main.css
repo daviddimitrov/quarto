@@ -104,3 +104,8 @@ button:hover{
 #long-body td {
     background-color: #e9ecef;
 }
+
+#kontext-toggle .active {
+    background-color: #40c351 !important;
+    color: white !important;
+}

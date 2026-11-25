@@ -140,13 +140,40 @@ function logout() {
 
 // ---------- Ansichten ----------
 
+// ---------- Kontext Privat/Arbeit ----------
+
+let allKontext = localStorage.getItem('quarto_all_kontext') || 'privat';
+
+function isDayView(view) {
+    return isDayView(view) || view === 'work';
+}
+
+function kontextFor(view) {
+    if (view === 'work') return 'arbeit';
+    if (view === 'all') return allKontext;
+    if (view === 'long') return currentView === 'work' ? 'arbeit' : 'privat';
+    return 'privat';
+}
+
+function setAllKontext(kontext) {
+    allKontext = kontext;
+    try { localStorage.setItem('quarto_all_kontext', kontext); } catch (e) {}
+    reloadCurrentView();
+}
+
+const VIEWS = {
+    today: { link: '#today-link', title: 'Heutige Aufgaben', hash: '#heute' },
+    work:  { link: '#work-link',  title: 'Arbeit',           hash: '#arbeit' },
+    all:   { link: '#all-link',   title: 'Alle Aufgaben',    hash: '#alle' },
+};
+
 function setView(view) {
     currentView = view;
     $('.nav-link').removeClass('active');
-    $(view === 'all' ? '#all-link' : '#today-link').addClass('active');
-    $('.table-header').text(view === 'all' ? 'Alle Aufgaben' : 'Heutige Aufgaben');
-    // Ansicht in der URL merken, damit auch ein Browser-Reload auf "Alle" bleibt
-    history.replaceState(null, '', view === 'all' ? '#alle' : '#heute');
+    $(VIEWS[view].link).addClass('active');
+    $('.table-header').text(VIEWS[view].title);
+    // Ansicht in der URL merken, damit ein Reload auf derselben Seite bleibt
+    history.replaceState(null, '', VIEWS[view].hash);
     reloadCurrentView();
 }
 
@@ -157,7 +184,7 @@ function reloadCurrentView() {
 // ---------- Cache (Optimistic UI) ----------
 
 function cacheKey(view) {
-    return `quarto_${view}_${$.cookie('user_id')}`;
+    return `quarto_${view}_${kontextFor(view)}_${$.cookie('user_id')}`;
 }
 
 function readCache(view) {
@@ -177,7 +204,7 @@ function loadView(view) {
 
     const path = view === 'all' ? '/tasks' : '/tasks/today';
     $.ajax({
-        url: apiPrefix + 'user/' + $.cookie('user_id') + path,
+        url: apiPrefix + 'user/' + $.cookie('user_id') + path + '?kontext=' + kontextFor(view),
         method: 'GET',
         dataType: 'json',
         success: function (response) {
@@ -192,9 +219,15 @@ function loadView(view) {
         }
     });
     $('#addTaskButton').toggle(view === 'all');
-    $('#quick-add').toggle(view === 'today');
-    $('#long-section').toggle(view === 'today');
-    if (view === 'today') {
+    $('#quick-add').toggle(isDayView(view));
+    $('#long-section').toggle(isDayView(view));
+    $('#kontext-toggle').toggle(view === 'all');
+    $('#kontext-toggle button').each(function () {
+        $(this).toggleClass('active', $(this).data('kontext') === allKontext);
+    });
+    $('#quickInput').attr('placeholder', view === 'work' ? 'ASAP: Outlook aufräumen, staffit' : 'aufräumen, einkaufen, post');
+    $('#longInput').attr('placeholder', view === 'work' ? 'Langfristig: Architekturdiagramm, Zertifikat' : 'Langfristig: Steuererklärung, Fahrrad reparieren');
+    if (isDayView(view)) {
         loadLong();
     }
 }
@@ -225,7 +258,7 @@ function buildRow(item, view) {
     const btn = (label, onclick, disabled = false) =>
         `<button ${disabled ? 'disabled' : ''} type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="${onclick}">${label}</button>`;
 
-    const menu = view === 'today'
+    const menu = isDayView(view)
         ? [
             btn('Erledigt', `runTaskAction('done', ['${item.id}'])`),
             btn('Nicht Heute', `runTaskAction('not-today', ['${item.id}'])`),
@@ -242,10 +275,10 @@ function buildRow(item, view) {
 
     return `
         <tr data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-long="${item.longTerm ? 'true' : 'false'}">
-            ${view === 'today' ? '<td class="drag-handle" style="width: 1%; cursor: grab; touch-action: none;"><i class="bi bi-grip-vertical text-muted"></i></td>' : ''}
+            ${isDayView(view) ? '<td class="drag-handle" style="width: 1%; cursor: grab; touch-action: none;"><i class="bi bi-grip-vertical text-muted"></i></td>' : ''}
             <td>${escapeHtml(item.name)}</td>
             <td class="text-muted" style="font-size: small; white-space: nowrap;">${getRelativeDate(item.dueDate)}</td>
-            ${view === 'today' ? '' : `<td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>`}
+            ${isDayView(view) ? '' : `<td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>`}
             <td>
                 <div class="dropdown">
                     <button class="btn tn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"></button>
@@ -267,7 +300,7 @@ function runTaskAction(action, taskIds) {
     taskIds = taskIds.map(String);
 
     // In "Heute" verschwindet ein Task bei jeder Aktion, in "Alle" nur beim Löschen
-    if (currentView === 'today' || action === 'delete') {
+    if (isDayView(currentView) || action === 'delete') {
         taskIds.forEach(id => $(`tr[data-id="${id}"]`).fadeOut(150, function () { $(this).remove(); }));
         [currentView, 'long'].forEach(view => {
             const remaining = (readCache(view) || []).filter(t => !taskIds.includes(String(t.id)));
@@ -368,7 +401,8 @@ function addTask() {
         duration: duration,
         dueDate: dueDate,
         rhythm: frequency,
-        today: 0
+        today: 0,
+        kontext: kontextFor('all')
     }
 
     $.ajax({
@@ -426,12 +460,12 @@ function initSortable(view) {
             }),
         ];
     }
-    sortables.forEach(s => s.option('disabled', view !== 'today'));
+    sortables.forEach(s => s.option('disabled', !isDayView(view)));
 }
 
 function onDrop(evt) {
-    const fromKey = evt.from.id === 'long-body' ? 'long' : 'today';
-    const toKey = evt.to.id === 'long-body' ? 'long' : 'today';
+    const fromKey = evt.from.id === 'long-body' ? 'long' : currentView;
+    const toKey = evt.to.id === 'long-body' ? 'long' : currentView;
     if (fromKey === toKey && evt.oldIndex === evt.newIndex) return;
 
     const id = evt.item.getAttribute('data-id');
@@ -454,12 +488,12 @@ function onDrop(evt) {
     else ordnung = (prev + next) / 2;
 
     task.ordnung = ordnung;
-    task.today = toKey === 'today' ? 1 : 0;
+    task.today = toKey === currentView ? 1 : 0;
     writeCache(toKey, ids.map(i => byId[i]).filter(Boolean));
     if (fromKey !== toKey) {
         writeCache(fromKey, fromCache.filter(t => String(t.id) !== id));
     }
-    renderTable(readCache('today') || [], 'today');
+    renderTable(readCache(currentView) || [], currentView);
     renderLong(readCache('long') || []);
 
     $.ajax({
@@ -482,7 +516,7 @@ function loadLong() {
         renderLong(cached);
     }
     $.ajax({
-        url: apiPrefix + 'user/' + $.cookie('user_id') + '/tasks/long',
+        url: apiPrefix + 'user/' + $.cookie('user_id') + '/tasks/long?kontext=' + kontextFor('long'),
         method: 'GET',
         dataType: 'json',
         success: function (response) {
@@ -537,7 +571,8 @@ function addQuick(kind, $input) {
     if (names.length === 0) return;
     $input.val('');
 
-    const cached = readCache(kind) || [];
+    const key = kind === 'long' ? 'long' : currentView;
+    const cached = readCache(key) || [];
     const maxOrder = cached.reduce((m, t) => Math.max(m, t.ordnung || 0), 0);
     const created = names.map((name, i) => ({
         id: `tmp-${Date.now()}-${i}`,
@@ -550,11 +585,11 @@ function addQuick(kind, $input) {
         ordnung: maxOrder + 1000 * (i + 1),
     }));
     const updated = cached.concat(created);
-    writeCache(kind, updated);
+    writeCache(key, updated);
     if (kind === 'long') {
         renderLong(updated);
-    } else if (currentView === 'today') {
-        renderTable(updated, 'today');
+    } else if (isDayView(currentView)) {
+        renderTable(updated, currentView);
     }
 
     const requests = created.map(t => $.ajax({
@@ -566,6 +601,7 @@ function addQuick(kind, $input) {
             name: t.name,
             spontan: t.spontan,
             longTerm: t.longTerm,
+            kontext: kontextFor(key === 'long' ? 'long' : currentView),
             ordnung: t.ordnung,
         }),
     }));
