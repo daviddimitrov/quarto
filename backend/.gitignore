@@ -1,0 +1,17 @@
+*.js
+!jest.config.js
+*.d.ts
+node_modules
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+
+.DS_Store
+quick_notes.txt
+
+assets/python/_lambda/default_layer/python/lib/*
+assets/python/_lambda/default_layer/default_layer.zip
+.venv/
+cdk-outputs.json
+__pycache__/
