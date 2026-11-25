@@ -145,7 +145,7 @@ function logout() {
 let allKontext = localStorage.getItem('quarto_all_kontext') || 'privat';
 
 function isDayView(view) {
-    return isDayView(view) || view === 'work';
+    return view === 'today' || view === 'work';
 }
 
 function kontextFor(view) {
