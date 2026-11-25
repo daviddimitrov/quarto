@@ -222,6 +222,9 @@ function loadView(view) {
     $('#quick-add').toggle(isDayView(view));
     $('#long-section').toggle(isDayView(view));
     $('#kontext-toggle').toggle(view === 'all');
+    // Arbeit braucht weder Priorität noch Dauer
+    const workForm = view === 'all' && allKontext === 'arbeit';
+    $('#selectPriority, #inputDuration, #editSelectPriority, #editInputDuration').closest('div').toggle(!workForm);
     $('#kontext-toggle button').each(function () {
         $(this).toggleClass('active', $(this).data('kontext') === allKontext);
     });
@@ -278,7 +281,7 @@ function buildRow(item, view) {
             ${isDayView(view) ? '<td class="drag-handle" style="width: 1%; cursor: grab; touch-action: none;"><i class="bi bi-grip-vertical text-muted"></i></td>' : ''}
             <td>${escapeHtml(item.name)}</td>
             <td class="text-muted" style="font-size: small; white-space: nowrap;">${getRelativeDate(item.dueDate)}</td>
-            ${isDayView(view) ? '' : `<td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>`}
+            ${isDayView(view) || kontextFor(view) === 'arbeit' ? '' : `<td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>`}
             <td>
                 <div class="dropdown">
                     <button class="btn tn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"></button>
@@ -362,9 +365,9 @@ function saveTaskEdit() {
     const taskId = $('#editTaskId').val();
 
     const task = {
-        priorityLevel: { id: parseInt($('#editSelectPriority').val()) },
+        priorityLevel: { id: kontextFor('all') === 'arbeit' ? null : parseInt($('#editSelectPriority').val()) },
         name: $('#editInputTask').val(),
-        duration: parseInt($('#editInputDuration').val()),
+        duration: kontextFor('all') === 'arbeit' ? null : parseInt($('#editInputDuration').val()),
         dueDate: $('#editPickDueDate').val(),
         rhythm: $('#editInputFrequency').val().trim(),
         today: 0
@@ -395,10 +398,10 @@ function addTask() {
     const apiEndpoint = apiPrefix + `task`;
 
     task = {
-        priority_level_id: priorityLevelId,
+        priority_level_id: kontextFor('all') === 'arbeit' ? null : priorityLevelId,
         user_id: $.cookie('user_id'),
         name: name,
-        duration: duration,
+        duration: kontextFor('all') === 'arbeit' ? null : duration,
         dueDate: dueDate,
         rhythm: frequency,
         today: 0,
