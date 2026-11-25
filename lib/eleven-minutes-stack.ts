@@ -6,6 +6,7 @@ import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
 
 export class ElevenMinutesStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -75,5 +76,26 @@ export class ElevenMinutesStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'ApiUrl', { value: api.apiEndpoint });
+
+    const userPool = new cognito.UserPool(this, 'QuartoUsers', {
+      userPoolName: 'quarto',
+      selfSignUpEnabled: false,
+      signInAliases: { username: true },
+      signInCaseSensitive: false,
+      passwordPolicy: { minLength: 10, requireSymbols: false, requireUppercase: false },
+      accountRecovery: cognito.AccountRecovery.NONE,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    const webClient = userPool.addClient('QuartoWeb', {
+      authFlows: { userPassword: true },
+      generateSecret: false,
+      accessTokenValidity: cdk.Duration.hours(1),
+      idTokenValidity: cdk.Duration.hours(1),
+      refreshTokenValidity: cdk.Duration.days(365),
+    });
+
+    new cdk.CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId });
+    new cdk.CfnOutput(this, 'UserPoolClientId', { value: webClient.userPoolClientId });
   }
 }
