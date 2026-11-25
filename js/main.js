@@ -224,7 +224,10 @@ function loadView(view) {
     $('#kontext-toggle').toggle(view === 'all');
     // Arbeit braucht weder Priorität noch Dauer
     const workForm = view === 'all' && allKontext === 'arbeit';
-    $('#selectPriority, #inputDuration, #editSelectPriority, #editInputDuration').closest('div').toggle(!workForm);
+    $('#selectPriority, #inputDuration, #editSelectPriority, #editInputDuration').closest('[class*="col"]').toggle(!workForm);
+    $('#pickDueDate, #inputFrequency, #editPickDueDate, #editInputFrequency').closest('[class*="col"]')
+        .css('flex', workForm ? '0 0 100%' : '')
+        .css('max-width', workForm ? '100%' : '');
     $('#kontext-toggle button').each(function () {
         $(this).toggleClass('active', $(this).data('kontext') === allKontext);
     });
