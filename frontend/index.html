@@ -37,7 +37,7 @@
                         <a class="nav-link" href="#" id="all-link" data-bs-toggle="collapse" data-bs-target="#navbarNav">Alle</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#" id="logout-link" data-bs-toggle="collapse" data-bs-target="#navbarNav" onclick="logout();">Logout</a>
+                        <a class="nav-link" href="#" id="account-link" data-bs-toggle="collapse" data-bs-target="#navbarNav">Konto</a>
                     </li>
                 </ul>
             </div>
@@ -53,6 +53,26 @@
                 <div id="kontext-toggle" class="btn-group btn-group-sm mb-3 w-100" role="group" style="display: none;">
                     <button type="button" class="btn btn-outline-success" data-kontext="privat" onclick="setAllKontext('privat')">Privat</button>
                     <button type="button" class="btn btn-outline-success" data-kontext="arbeit" onclick="setAllKontext('arbeit')">Arbeit</button>
+                </div>
+
+                <!-- Konto: Zeitlimits und Logout -->
+                <div id="account-section" style="display: none;">
+                    <form onsubmit="event.preventDefault(); saveAccount();">
+                        <div class="mb-3">
+                            <label for="dailyLimit" class="form-label">Tägliches Zeitlimit (Minuten)</label>
+                            <input type="number" class="form-control" id="dailyLimit" min="1" max="240" inputmode="numeric">
+                        </div>
+                        <div class="mb-3">
+                            <label for="maxLimit" class="form-label">Maximales Zeitlimit mit Übertrag (Minuten)</label>
+                            <input type="number" class="form-control" id="maxLimit" min="1" max="240" inputmode="numeric">
+                        </div>
+                        <p class="text-muted small">Heutiges Budget: <span id="budgetToday">–</span> Minuten</p>
+                        <div id="accountMessage" class="small mb-2"></div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-outline-success">Speichern</button>
+                            <button type="button" class="btn btn-outline-success ms-auto" onclick="logout();">Logout</button>
+                        </div>
+                    </form>
                 </div>
 
                 <!-- Schnelle Eingabe für spontane To-dos, nur in "Heute" -->
@@ -221,7 +241,7 @@
     <script>
         $(document).ready(function () {
             checkAuth();
-            setView({'#alle': 'all', '#arbeit': 'work'}[location.hash] || 'today');
+            setView({'#alle': 'all', '#arbeit': 'work', '#konto': 'account'}[location.hash] || 'today');
 
             $("#add-task-form").submit(function(event){
                 event.preventDefault();

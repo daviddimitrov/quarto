@@ -165,6 +165,7 @@ const VIEWS = {
     today: { link: '#today-link', title: 'Heutige Aufgaben', hash: '#heute' },
     work:  { link: '#work-link',  title: 'Arbeit',           hash: '#arbeit' },
     all:   { link: '#all-link',   title: 'Alle Aufgaben',    hash: '#alle' },
+    account: { link: '#account-link', title: 'Konto',         hash: '#konto' },
 };
 
 function setView(view) {
@@ -197,6 +198,14 @@ function writeCache(view, items) {
 
 // Zeigt sofort den Cache und lädt im Hintergrund den aktuellen Stand
 function loadView(view) {
+    const isAccount = view === 'account';
+    $('#account-section').toggle(isAccount);
+    $('#card-content > table').toggle(!isAccount);
+    if (isAccount) {
+        $('#quick-add, #long-section, #kontext-toggle, #addTaskButton').hide();
+        loadAccount();
+        return;
+    }
     const cached = readCache(view);
     if (cached) {
         renderTable(cached, view);
@@ -569,6 +578,54 @@ function buildLongRow(item) {
             </td>
         </tr>
     `;
+}
+
+// ---------- Konto ----------
+
+$(document).on('click', '#account-link', function (event) {
+    event.preventDefault();
+    setView('account');
+});
+
+function showAccountMessage(text, ok) {
+    $('#accountMessage').toggleClass('text-success', ok).toggleClass('text-danger', !ok).text(text);
+}
+
+function loadAccount() {
+    $('#accountMessage').text('');
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/profile`,
+        method: 'GET',
+        dataType: 'json',
+        success: function (p) {
+            $('#dailyLimit').val(p.dailyLimit);
+            $('#maxLimit').val(p.maxLimit);
+            $('#budgetToday').text(p.budgetToday);
+        },
+        error: function () {
+            showAccountMessage('Konto konnte nicht geladen werden.', false);
+        }
+    });
+}
+
+function saveAccount() {
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/profile`,
+        method: 'PUT',
+        contentType: 'application/json',
+        dataType: 'json',
+        data: JSON.stringify({
+            dailyLimit: parseInt($('#dailyLimit').val()),
+            maxLimit: parseInt($('#maxLimit').val()),
+        }),
+        success: function (p) {
+            $('#budgetToday').text(p.budgetToday);
+            showAccountMessage('Gespeichert.', true);
+        },
+        error: function (xhr) {
+            showAccountMessage((xhr.responseJSON && xhr.responseJSON.message) || 'Speichern fehlgeschlagen.', false);
+        }
+    });
 }
 
 // ---------- Deadlines ----------
