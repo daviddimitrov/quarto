@@ -13,7 +13,7 @@ PRIORITIES = {1: "ASAP", 2: "HIGH", 3: "MEDIUM", 4: "LOW"}
 FIELDS = {
     "name": "name", "duration": "duration", "dueDate": "due_date", "due_date": "due_date",
     "rhythm": "rhythm", "today": "today", "priority_level_id": "priority", "priority": "priority",
-    "ordnung": "ordnung", "spontan": "spontan", "longTerm": "long_term", "long_term": "long_term", "kontext": "kontext", "deadline": "deadline", "notiz": "notiz",
+    "ordnung": "ordnung", "spontan": "spontan", "longTerm": "long_term", "long_term": "long_term", "kontext": "kontext", "deadline": "deadline", "notiz": "notiz", "subtasks": "subtasks",
 }
 
 
@@ -104,6 +104,18 @@ def next_due(item, today_date):
     return today_date + timedelta(days=rhythm) if rhythm else None
 
 
+def normalize_subtasks(value):
+    """Nimmt Textzeilen oder {id, name, done} an und liefert eine saubere Liste."""
+    result = []
+    for s in value or []:
+        if isinstance(s, str):
+            s = {"name": s}
+        name = str(s.get("name") or "").strip()
+        if name:
+            result.append({"id": s.get("id") or uuid.uuid4().hex[:8], "name": name, "done": bool(s.get("done"))})
+    return result or None
+
+
 def parse(body):
     body = dict(body)
     if isinstance(body.get("priorityLevel"), dict):
@@ -113,6 +125,9 @@ def parse(body):
         if k not in FIELDS:
             continue
         field = FIELDS[k]
+        if field == "subtasks":
+            data["subtasks"] = normalize_subtasks(v)
+            continue
         if field == "rhythm":
             data["rhythm"], data["regel"] = parse_rhythm(v)
             continue
@@ -143,6 +158,7 @@ def to_dto(t, user_id, profile):
         "kontext": t.get("kontext", "privat"),
         "deadline": t.get("deadline"),
         "notiz": t.get("notiz"),
+        "subtasks": t.get("subtasks") or [],
     }
 
 
@@ -239,10 +255,16 @@ def set_done(p, body):
     if nxt is None:
         table.delete_item(Key=key(p["userId"], p["taskId"]))
     else:
+        # Wiederkehrend: nächste Fälligkeit setzen und alle Unteraufgaben zurücksetzen
+        expr = "SET due_date = :d, today = :z"
+        values = {":d": nxt.isoformat(), ":z": 0}
+        if item.get("subtasks"):
+            expr += ", subtasks = :s"
+            values[":s"] = [{**s, "done": False} for s in item["subtasks"]]
         table.update_item(
             Key=key(p["userId"], p["taskId"]),
-            UpdateExpression="SET due_date = :d, today = :z",
-            ExpressionAttributeValues={":d": nxt.isoformat(), ":z": 0},
+            UpdateExpression=expr,
+            ExpressionAttributeValues=values,
         )
     return 202, {"message": "Task set to done successfully"}
 
