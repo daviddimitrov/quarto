@@ -31,11 +31,28 @@ def collect_for_user(user_id, nightly):
     profile = next((i for i in items if i["SK"] == "PROFILE"), None)
     if profile is None:
         return None
-    budget = int(profile.get("default_duration", 15))
     now = datetime.now(ZoneInfo("Europe/Berlin"))
     today = now.date().isoformat()
     workday = now.weekday() < 5
     tasks = [i for i in items if i["SK"].startswith("TASK#")]
+
+    base = int(profile.get("default_duration", 15))
+    maximum = int(profile.get("max_duration", 30))
+    if nightly:
+        # Offen gebliebene private Minuten von gestern wandern auf heute, gedeckelt
+        open_minutes = sum(
+            int(t.get("duration") or 0) for t in tasks
+            if kontext(t) == "privat" and t.get("today") == 1
+            and not t.get("spontan") and not t.get("long_term")
+        )
+        budget = min(maximum, base + open_minutes)
+        table.update_item(
+            Key={"PK": pk, "SK": "PROFILE"},
+            UpdateExpression="SET budget = :b",
+            ExpressionAttributeValues={":b": budget},
+        )
+    else:
+        budget = min(maximum, max(base, int(profile.get("budget", base))))
 
     # Private spontane To-dos verfallen nachts, ASAP-Tasks auf Arbeit bleiben bis erledigt
     if nightly:

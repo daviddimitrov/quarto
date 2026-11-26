@@ -79,6 +79,7 @@ export class ElevenMinutesStack extends cdk.Stack {
     const M = apigw.HttpMethod;
     const routes: [string, apigw.HttpMethod[]][] = [
       ['/user', [M.GET]],
+      ['/user/{userId}/profile', [M.GET, M.PUT]],
       ['/user/{userId}/tasks', [M.GET]],
       ['/user/{userId}/tasks/today', [M.GET, M.PATCH]],
       ['/user/{userId}/tasks/long', [M.GET]],

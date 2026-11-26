@@ -253,6 +253,37 @@ def shift(days):
     return handler
 
 
+def get_profile_route(p, body):
+    prof = get_profile(p["userId"])
+    if prof is None:
+        return 404, {"message": "User not found"}
+    base = int(prof.get("default_duration", 15))
+    maximum = int(prof.get("max_duration", 30))
+    return 200, {
+        "name": prof["name"],
+        "dailyLimit": base,
+        "maxLimit": maximum,
+        "budgetToday": min(maximum, max(base, int(prof.get("budget", base)))),
+    }
+
+
+def put_profile_route(p, body):
+    try:
+        daily = int(body.get("dailyLimit"))
+        maximum = int(body.get("maxLimit"))
+    except (TypeError, ValueError):
+        return 400, {"message": "Zeitlimits müssen Zahlen sein"}
+    if not (1 <= daily <= 240 and daily <= maximum <= 240):
+        return 400, {"message": "Limits zwischen 1 und 240, Maximum mindestens so groß wie das tägliche Limit"}
+    table.update_item(
+        Key={"PK": f"USER#{p['userId']}", "SK": "PROFILE"},
+        UpdateExpression="SET default_duration = :d, max_duration = :m",
+        ExpressionAttributeValues={":d": daily, ":m": maximum},
+        ConditionExpression="attribute_exists(PK)",
+    )
+    return get_profile_route(p, body)
+
+
 _LOGIN_CACHE = {}
 
 
@@ -270,6 +301,8 @@ def user_from_token(event):
 
 ROUTES = {
     "GET /user": list_users,
+    "GET /user/{userId}/profile": get_profile_route,
+    "PUT /user/{userId}/profile": put_profile_route,
     "GET /user/{userId}/tasks": list_tasks,
     "GET /user/{userId}/tasks/today": lambda p, b: list_tasks(p, b, mode="today"),
     "GET /user/{userId}/tasks/long": lambda p, b: list_tasks(p, b, mode="long"),
