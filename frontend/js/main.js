@@ -1,12 +1,8 @@
 let apiPrefix = "https://vs7ubni3p3.execute-api.eu-central-1.amazonaws.com/";
 
-// Aktuelle Ansicht: 'today' oder 'all'
+// Aktuelle Ansicht: 'today', 'work', 'all' oder 'account'
 let currentView = 'today';
 
-// Ausgewählte Task-IDs für Mehrfachbearbeitung
-const selectedIds = new Set();
-
-// Alle Aktionen an einer Stelle, für Einzel- und Mehrfachbearbeitung
 const TASK_ACTIONS = {
     'done':      { method: 'PATCH',  path: id => `user/${$.cookie('user_id')}/task/${id}/done` },
     'not-today': { method: 'PATCH',  path: id => `user/${$.cookie('user_id')}/task/${id}/today` },
@@ -89,9 +85,13 @@ $(document).ajaxError(function (event, xhr, settings) {
     }
 });
 
+function isAppPage() {
+    return !!document.getElementById('task-list');
+}
+
 // App kommt aus dem Hintergrund zurück
 document.addEventListener('visibilitychange', function () {
-    if (!document.hidden && localStorage.getItem('quarto_refresh_token') && tokenExpiresSoon()) {
+    if (isAppPage() && !document.hidden && localStorage.getItem('quarto_refresh_token') && tokenExpiresSoon()) {
         refreshTokens().then(() => reloadCurrentView()).catch(() => {});
     }
 });
@@ -138,8 +138,6 @@ function logout() {
     window.location.href = LOGIN_PAGE;
 }
 
-// ---------- Ansichten ----------
-
 // ---------- Kontext Privat/Arbeit ----------
 
 let allKontext = localStorage.getItem('quarto_all_kontext') || 'privat';
@@ -161,24 +159,30 @@ function setAllKontext(kontext) {
     reloadCurrentView();
 }
 
+// ---------- Ansichten ----------
+
 const VIEWS = {
-    today: { link: '#today-link', title: 'Heutige Aufgaben', hash: '#heute' },
-    work:  { link: '#work-link',  title: 'Arbeit',           hash: '#arbeit' },
-    all:   { link: '#all-link',   title: 'Alle Aufgaben',    hash: '#alle' },
-    account: { link: '#account-link', title: 'Konto',         hash: '#konto' },
+    today:   { title: 'Heute',  hash: '#heute' },
+    work:    { title: 'Arbeit', hash: '#arbeit' },
+    all:     { title: 'Alle',   hash: '#alle' },
+    account: { title: 'Konto',  hash: '#konto' },
 };
 
 function setView(view) {
     currentView = view;
-    $('.nav-link').removeClass('active');
-    $(VIEWS[view].link).addClass('active');
-    $('.table-header').text(VIEWS[view].title);
+    $('[data-view]').removeClass('active');
+    $(`[data-view="${view}"]`).addClass('active');
+    $('#view-title').text(VIEWS[view].title);
+    $('#view-date').text(new Date().toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' }));
+    $('body').attr('data-current', view);
+    closeMenu();
     // Ansicht in der URL merken, damit ein Reload auf derselben Seite bleibt
     history.replaceState(null, '', VIEWS[view].hash);
     reloadCurrentView();
 }
 
 function reloadCurrentView() {
+    if (!isAppPage()) return;
     loadView(currentView);
 }
 
@@ -194,18 +198,34 @@ function readCache(view) {
 
 function writeCache(view, items) {
     try { localStorage.setItem(cacheKey(view), JSON.stringify(items)); } catch (e) {}
+    updateCounts();
+}
+
+function readRaw(key) {
+    try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; }
 }
 
 // Zeigt sofort den Cache und lädt im Hintergrund den aktuellen Stand
 function loadView(view) {
     const isAccount = view === 'account';
-    $('#account-section').toggle(isAccount);
-    $('#card-content > table').toggle(!isAccount);
+    $('#account-section').prop('hidden', !isAccount);
+    $('#lists').prop('hidden', isAccount);
+    $('#budget').prop('hidden', view !== 'today');
+    $('#kontext-toggle').prop('hidden', view !== 'all');
     if (isAccount) {
-        $('#quick-add, #long-section, #kontext-toggle, #addTaskButton').hide();
         loadAccount();
         return;
     }
+
+    $('#addTaskButton').prop('hidden', view !== 'all');
+    $('#quick-add').prop('hidden', !isDayView(view));
+    $('#long-section').prop('hidden', !isDayView(view));
+    $('#kontext-toggle button').each(function () {
+        $(this).toggleClass('active', this.getAttribute('data-kontext') === allKontext);
+    });
+    $('#quickInput').attr('placeholder', view === 'work' ? 'Spontan: Outlook aufräumen, staffit' : 'Spontan: aufräumen, post');
+    $('#longInput').attr('placeholder', view === 'work' ? 'Langfristig: Diagramm bis fr' : 'Langfristig: Steuer bis 31.7.');
+
     const cached = readCache(view);
     if (cached) {
         renderTable(cached, view);
@@ -217,8 +237,8 @@ function loadView(view) {
         method: 'GET',
         dataType: 'json',
         success: function (response) {
-            writeCache(view, response);
             const changed = JSON.stringify(response) !== JSON.stringify(cached);
+            writeCache(view, response);
             if (currentView === view && changed) {
                 renderTable(response, view);
             }
@@ -227,85 +247,178 @@ function loadView(view) {
             console.error('Error fetching data:', status, error);
         }
     });
-    $('#addTaskButton').toggle(view === 'all');
-    $('#quick-add').toggle(isDayView(view));
-    $('#long-section').toggle(isDayView(view));
-    $('#kontext-toggle').toggle(view === 'all');
-    // Arbeit braucht weder Priorität noch Dauer
-    const workForm = view === 'all' && allKontext === 'arbeit';
-    $('#selectPriority, #inputDuration, #editSelectPriority, #editInputDuration').closest('[class*="col"]').toggle(!workForm);
-    $('#selectPriority, #inputDuration, #editSelectPriority, #editInputDuration').prop('required', !workForm);
-    $('#pickDueDate, #inputFrequency, #editPickDueDate, #editInputFrequency').closest('[class*="col"]')
-        .css('flex', workForm ? '0 0 100%' : '')
-        .css('max-width', workForm ? '100%' : '');
-    $('#kontext-toggle button').each(function () {
-        $(this).toggleClass('active', $(this).data('kontext') === allKontext);
-    });
-    $('#quickInput').attr('placeholder', view === 'work' ? 'ASAP: Outlook aufräumen, staffit' : 'aufräumen, einkaufen, post');
-    $('#longInput').attr('placeholder', view === 'work' ? 'Langfristig: Diagramm bis fr, Zertifikat bis 15.12.' : 'Langfristig: Steuererklärung bis 31.7., Fahrrad');
     if (isDayView(view)) {
         loadLong();
     }
+    if (view === 'today') {
+        loadBudget();
+    }
 }
-
-function loadTodayTable() { loadView('today'); }
-function loadAllTable() { loadView('all'); }
 
 function renderTable(items, view) {
-    const $tableBody = $('#card-content > table > tbody');
-    $tableBody.empty();
-    clearSelection();
+    const $list = $('#task-list');
+    $list.empty();
+    $list.toggleClass('all-view', view === 'all');
 
     if (items.length === 0) {
-        $tableBody.append(`
-            <tr>
-                <td colspan="5" style="text-align: center;">Nix 🎉</td>
-            </tr>
-        `);
-        return;
+        $list.append(`<div class="empty">${view === 'all' ? 'Keine Aufgaben' : 'Alles erledigt'}</div>`);
+    } else {
+        items.forEach(item => $list.append(buildRow(item, view)));
     }
-
-    items.forEach(item => $tableBody.append(buildRow(item, view)));
     initSortable(view);
-    updateBulkBar();
+    if (view === 'today') renderBudget();
 }
 
-function buildRow(item, view) {
-    const btn = (label, onclick, disabled = false) =>
-        `<button ${disabled ? 'disabled' : ''} type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="${onclick}">${label}</button>`;
+// ---------- Zeilen ----------
 
-    const menu = isDayView(view)
-        ? [
-            btn('Erledigt', `runTaskAction('done', ['${item.id}'])`),
-            btn('Nicht Heute', `runTaskAction('not-today', ['${item.id}'])`),
-            btn('Morgen', `runTaskAction('tomorrow', ['${item.id}'])`),
-            btn('Nächste Woche', `runTaskAction('next-week', ['${item.id}'])`),
-            btn('Details', `openNote('${item.id}')`),
-        ]
-        : [
-            btn('Erledigt', `runTaskAction('done', ['${item.id}'])`),
-            btn('Bearbeiten', `taskEdit('${item.id}')`),
-            btn('Löschen', `startTaskDelete(['${item.id}'])`),
-            btn('Morgen', `runTaskAction('tomorrow', ['${item.id}'])`),
-            btn('Nächste Woche', `runTaskAction('next-week', ['${item.id}'])`),
-        ];
+function buildRow(item, view, long = false) {
+    const subs = item.subtasks || [];
+    const done = subs.filter(s => s.done).length;
+    const hasDetail = subs.length > 0 || !!item.notiz;
+    const open = hasDetail && openTasks.has(String(item.id));
+    const isWork = (long ? kontextFor('long') : kontextFor(view)) === 'arbeit';
+
+    const badges = (subs.length ? `<span class="mono muted sub-count">${done}/${subs.length}</span>` : '')
+        + (item.notiz ? '<i class="bi bi-journal-text muted"></i>' : '');
+
+    // Rechte Spalte: Deadline, Fälligkeit, Dauer
+    let meta = '';
+    if (item.deadline) {
+        const days = daysUntil(item.deadline);
+        meta += `<span class="chip${days <= 2 ? ' hot' : ''}">${shortDays(days)}</span>`;
+    } else if (view === 'all' && item.dueDate) {
+        const days = daysUntil(item.dueDate);
+        meta += `<span class="mono${days < 0 ? ' overdue' : ' muted'}">${shortDays(days)}</span>`;
+    } else if (!long && item.dueDate && daysUntil(item.dueDate) < 0) {
+        meta += `<span class="mono overdue">${daysUntil(item.dueDate)}d</span>`;
+    }
+    if (view === 'all' && item.rhythm) {
+        meta += `<span class="mono muted rhythm">${escapeHtml(item.rhythm)}</span>`;
+    }
+    if (!long && !isWork && item.duration) {
+        meta += `<span class="mono muted">${item.duration}m</span>`;
+    }
+    if (view === 'all' && !isWork && item.priorityLevel && item.priorityLevel.name) {
+        meta += `<span class="prio prio-${item.priorityLevel.name.toLowerCase()}" title="${item.priorityLevel.name}"></span>`;
+    }
+
+    let detail = '';
+    if (open) {
+        const pct = subs.length ? Math.round(100 * done / subs.length) : 0;
+        detail = '<div class="detail">'
+            + (subs.length ? `<div class="sub-progress"><span style="width:${pct}%"></span></div>` : '')
+            + subs.map(s =>
+                `<button type="button" class="subtask${s.done ? ' done' : ''}" data-task="${item.id}" data-sub="${s.id}">`
+                + `<span class="box">${s.done ? '<i class="bi bi-check"></i>' : ''}</span>`
+                + `<span class="sub-name">${escapeHtml(s.name)}</span></button>`).join('')
+            + (item.notiz ? `<div class="note">${linkify(escapeHtml(item.notiz))}</div>` : '')
+            + '</div>';
+    }
+
+    const classes = ['row'];
+    if (long) classes.push('long-row');
+    if (open) classes.push('open');
+    if (hasDetail) classes.push('has-detail');
 
     return `
-        <tr data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-long="${item.longTerm ? 'true' : 'false'}">
-            ${isDayView(view) ? '<td class="drag-handle" style="width: 1%; cursor: grab; touch-action: none;"><i class="bi bi-grip-vertical text-muted"></i></td>' : ''}
-            ${nameCell(item)}
-            <td class="text-muted" style="font-size: small; white-space: nowrap;">${item.deadline ? `<span class="text-danger">${relativeDays(daysUntil(item.deadline))}</span>` : getRelativeDate(item.dueDate)}</td>
-            ${isDayView(view) || kontextFor(view) === 'arbeit' ? '' : `<td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>`}
-            <td class="text-end" style="width: 1%;">
-                <div class="dropdown">
-                    <button class="btn tn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"></button>
-                    <div class="dropdown-menu">
-                        ${menu.join('\n')}
-                    </div>
+        <div class="${classes.join(' ')}" data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-long="${item.longTerm ? 'true' : 'false'}">
+            <span class="grip"><i class="bi bi-grip-vertical"></i></span>
+            <button type="button" class="check${item.spontan ? ' spontan' : ''}" aria-label="Erledigt"><i class="bi bi-check"></i></button>
+            <div class="row-main">
+                <div class="row-line">
+                    <span class="name">${escapeHtml(item.name)}</span>
+                    ${badges}
                 </div>
-            </td>
-        </tr>
+                ${detail}
+            </div>
+            <div class="meta">${meta}</div>
+            <button type="button" class="more" aria-label="Mehr"><i class="bi bi-three-dots"></i></button>
+        </div>
     `;
+}
+
+// Menüeinträge je nach Liste
+function menuItems(id, isLong) {
+    if (isLong) {
+        return [
+            ['to-today', 'Heute', 'bi-sun'],
+            ['details', 'Details', 'bi-journal-text'],
+            ['delete', 'Löschen', 'bi-trash'],
+        ];
+    }
+    if (isDayView(currentView)) {
+        return [
+            ['not-today', 'Nicht heute', 'bi-x-lg'],
+            ['tomorrow', 'Morgen', 'bi-arrow-right'],
+            ['next-week', 'Nächste Woche', 'bi-calendar-week'],
+            ['details', 'Details', 'bi-journal-text'],
+        ];
+    }
+    return [
+        ['edit', 'Bearbeiten', 'bi-pencil'],
+        ['tomorrow', 'Morgen', 'bi-arrow-right'],
+        ['next-week', 'Nächste Woche', 'bi-calendar-week'],
+        ['delete', 'Löschen', 'bi-trash'],
+    ];
+}
+
+// ---------- Menü ----------
+
+function openMenu(button) {
+    const $row = $(button).closest('.row');
+    const id = $row.attr('data-id');
+    const isLong = $row.hasClass('long-row');
+    const $menu = $('#row-menu');
+    if (!$menu.prop('hidden') && $menu.attr('data-for') === id) {
+        closeMenu();
+        return;
+    }
+    $menu.attr('data-for', id).html(menuItems(id, isLong).map(([action, label, icon]) =>
+        `<button type="button" data-action="${action}" class="${action === 'delete' ? 'danger' : ''}"><i class="bi ${icon}"></i>${label}</button>`
+    ).join('')).prop('hidden', false);
+
+    const r = button.getBoundingClientRect();
+    const mw = $menu.outerWidth(), mh = $menu.outerHeight();
+    let top = r.bottom + 4;
+    if (top + mh > window.innerHeight - 8) top = r.top - mh - 4;
+    const left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8));
+    $menu.css({ top: top + 'px', left: left + 'px' });
+}
+
+function closeMenu() {
+    $('#row-menu').prop('hidden', true).removeAttr('data-for');
+}
+
+function runMenuAction(action, id) {
+    closeMenu();
+    if (action === 'details') openNote(id);
+    else if (action === 'edit') taskEdit(id);
+    else if (action === 'delete') startTaskDelete([id]);
+    else runTaskAction(action, [id]);
+}
+
+// ---------- Info-Popover ----------
+
+function togglePop(button) {
+    const $pop = $('#pop');
+    if (!$pop.prop('hidden') && $pop.data('for') === button) {
+        hidePop();
+        return;
+    }
+    $pop.html(button.getAttribute('data-info')).prop('hidden', false).data('for', button);
+    // Im Dialog muss das Popover im Dialog liegen, sonst liegt es unter dem Backdrop
+    const dialog = button.closest('dialog');
+    $pop.appendTo(dialog || document.body);
+    const r = button.getBoundingClientRect();
+    const pw = $pop.outerWidth(), ph = $pop.outerHeight();
+    let top = r.top - ph - 8;
+    if (top < 8) top = r.bottom + 8;
+    const left = Math.max(8, Math.min(r.left + r.width / 2 - pw / 2, window.innerWidth - pw - 8));
+    $pop.css({ top: top + 'px', left: left + 'px' });
+}
+
+function hidePop() {
+    $('#pop').prop('hidden', true).data('for', null);
 }
 
 // ---------- Aktionen ----------
@@ -316,14 +429,14 @@ function runTaskAction(action, taskIds) {
     if (!config || taskIds.length === 0) return;
     taskIds = taskIds.map(String);
 
-    // In "Heute" verschwindet ein Task bei jeder Aktion, in "Alle" nur beim Löschen
+    // In Heute und Arbeit verschwindet ein Task bei jeder Aktion, in Alle nur beim Löschen
     if (isDayView(currentView) || action === 'delete') {
-        taskIds.forEach(id => $(`tr[data-id="${id}"]`).fadeOut(150, function () { $(this).remove(); }));
+        taskIds.forEach(id => $(`.row[data-id="${id}"]`).addClass('leaving').delay(180).queue(function () { $(this).remove(); }));
         [currentView, 'long'].forEach(view => {
             const remaining = (readCache(view) || []).filter(t => !taskIds.includes(String(t.id)));
             writeCache(view, remaining);
         });
-        clearSelection();
+        if (currentView === 'today') setTimeout(renderBudget, 0);
     }
 
     const requests = taskIds.map(id => $.ajax({
@@ -342,20 +455,56 @@ function runTaskAction(action, taskIds) {
     });
 }
 
+function completeTask(row) {
+    const id = row.getAttribute('data-id');
+    if (String(id).startsWith('tmp-')) return;
+    $(row).addClass('checked');
+    setTimeout(() => runTaskAction('done', [id]), 220);
+}
+
 function startTaskDelete(taskIds) {
     const label = taskIds.length === 1
-        ? `"${$(`tr[data-id="${taskIds[0]}"]`).data('name')}"`
+        ? `"${$(`.row[data-id="${taskIds[0]}"]`).attr('data-name') || ''}"`
         : `${taskIds.length} Aufgaben`;
 
     $('#toBeDeletedTaskName').text(label);
     $('#toBeDeletedTaskButton').off('click').on('click', function () {
-        $('#deleteTaskModal').modal('hide');
+        closeDialog('#deleteTaskModal');
         runTaskAction('delete', taskIds);
     });
-    $('#deleteTaskModal').modal('show');
+    openDialog('#deleteTaskModal');
 }
 
+// ---------- Dialoge ----------
+
+function openDialog(sel) {
+    const d = $(sel)[0];
+    if (d && !d.open) d.showModal();
+}
+
+function closeDialog(sel) {
+    const d = $(sel)[0];
+    if (d && d.open) d.close();
+    hidePop();
+}
+
+// Ein Dialog für Neu und Bearbeiten
 let editingSubtasks = [];
+
+function prepareTaskForm() {
+    // Arbeit braucht weder Priorität noch Dauer
+    const workForm = kontextFor('all') === 'arbeit';
+    $('#taskModal .private-only').prop('hidden', workForm);
+    $('#selectPriority, #inputDuration').prop('required', !workForm);
+}
+
+function openNewTask() {
+    emptyForm();
+    $('#taskModalTitle').text(kontextFor('all') === 'arbeit' ? 'Neue Arbeitsaufgabe' : 'Neue Aufgabe');
+    prepareTaskForm();
+    openDialog('#taskModal');
+    setTimeout(() => $('#inputTask').trigger('focus'), 50);
+}
 
 function taskEdit(taskId) {
     $.ajax({
@@ -363,16 +512,19 @@ function taskEdit(taskId) {
         method: 'GET',
         dataType: 'json',
         success: function (item) {
+            emptyForm();
+            $('#taskModalTitle').text('Aufgabe bearbeiten');
             $('#editTaskId').val(item.id);
-            $('#editInputTask').val(item.name);
-            $('#editInputNote').val(item.notiz || '');
+            $('#inputTask').val(item.name);
+            $('#inputNote').val(item.notiz || '');
             editingSubtasks = item.subtasks || [];
-            $('#editInputSubtasks').val(editingSubtasks.map(s => s.name).join('\n'));
-            $('#editSelectPriority').val(item.priorityLevel.id);
-            $('#editPickDueDate').val(item.dueDate);
-            $('#editInputFrequency').val(item.rhythm);
-            $('#editInputDuration').val(item.duration);
-            $('#editTaskModal').modal('show');
+            $('#inputSubtasks').val(editingSubtasks.map(s => s.name).join('\n'));
+            if (item.priorityLevel && item.priorityLevel.id) $('#selectPriority').val(item.priorityLevel.id);
+            $('#pickDueDate').val(item.dueDate);
+            $('#inputFrequency').val(item.rhythm);
+            $('#inputDuration').val(item.duration);
+            prepareTaskForm();
+            openDialog('#taskModal');
         },
         error: function (xhr, status, error) {
             console.error('Error fetching task:', status, error);
@@ -380,17 +532,21 @@ function taskEdit(taskId) {
     });
 }
 
+function submitTaskForm() {
+    if ($('#editTaskId').val()) saveTaskEdit(); else addTask();
+}
+
 function saveTaskEdit() {
     const taskId = $('#editTaskId').val();
-
+    const isWork = kontextFor('all') === 'arbeit';
     const task = {
-        priorityLevel: { id: kontextFor('all') === 'arbeit' ? null : parseInt($('#editSelectPriority').val()) },
-        name: $('#editInputTask').val(),
-        notiz: $('#editInputNote').val().trim(),
-        subtasks: linesToSubtasks($('#editInputSubtasks').val(), editingSubtasks),
-        duration: kontextFor('all') === 'arbeit' ? null : parseInt($('#editInputDuration').val()),
-        dueDate: $('#editPickDueDate').val(),
-        rhythm: $('#editInputFrequency').val().trim(),
+        priorityLevel: { id: isWork ? null : parseInt($('#selectPriority').val()) },
+        name: $('#inputTask').val(),
+        notiz: $('#inputNote').val().trim(),
+        subtasks: linesToSubtasks($('#inputSubtasks').val(), editingSubtasks),
+        duration: isWork ? null : parseInt($('#inputDuration').val()),
+        dueDate: $('#pickDueDate').val(),
+        rhythm: $('#inputFrequency').val().trim(),
         today: 0
     };
 
@@ -400,70 +556,53 @@ function saveTaskEdit() {
         contentType: 'application/json',
         data: JSON.stringify(task),
         success: function () {
-            $('#editTaskModal').modal('hide');
+            closeDialog('#taskModal');
             reloadCurrentView();
         },
         error: function (xhr, status, error) {
             console.error('Error updating task:', status, error);
+            alert('Speichern fehlgeschlagen.');
         }
     });
 }
 
 function addTask() {
-    name = $('#inputTask').val();
-    priorityLevelId = $('#selectPriority').val();
-    dueDate = $('#pickDueDate').val();
-    frequency = $('#inputFrequency').val();
-    duration = $('#inputDuration').val();
-
-    const apiEndpoint = apiPrefix + `task`;
-
-    task = {
-        priority_level_id: kontextFor('all') === 'arbeit' ? null : priorityLevelId,
+    const isWork = kontextFor('all') === 'arbeit';
+    const task = {
+        priority_level_id: isWork ? null : $('#selectPriority').val(),
         user_id: $.cookie('user_id'),
-        name: name,
+        name: $('#inputTask').val(),
         notiz: $('#inputNote').val().trim(),
         subtasks: linesToSubtasks($('#inputSubtasks').val(), []),
-        duration: kontextFor('all') === 'arbeit' ? null : duration,
-        dueDate: dueDate,
-        rhythm: frequency,
+        duration: isWork ? null : $('#inputDuration').val(),
+        dueDate: $('#pickDueDate').val(),
+        rhythm: $('#inputFrequency').val().trim(),
         today: 0,
         kontext: kontextFor('all')
-    }
+    };
 
     $.ajax({
-        url: apiEndpoint,
+        url: apiPrefix + 'task',
         method: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify(task), // Aufgabe als JSON-String senden
-        success: function (data, textStatus, xhr) {
-            $('#exampleModalCenter').modal('hide');
-            if (xhr.status === 201) {
-                emptyForm();
-            }
+        data: JSON.stringify(task),
+        success: function () {
+            closeDialog('#taskModal');
+            emptyForm();
             reloadCurrentView();
         },
         error: function (xhr, status, error) {
             console.error('Error adding task:', status, error);
+            alert('Anlegen fehlgeschlagen.');
         }
     });
 }
 
-function refreshToday() {
-    const userId = $.cookie('user_id')
-    const apiEndpoint = apiPrefix + `user/${userId}/tasks/today`;
-
-    $.ajax({
-        url: apiEndpoint,
-        method: 'PATCH',
-        contentType: 'application/json',
-        success: function () {
-            reloadCurrentView();
-        },
-        error: function (xhr, status, error) {
-            console.error('Error refreshing today:', status, error);
-        }
-    });
+function emptyForm() {
+    $('#editTaskId').val('');
+    $('#inputTask, #inputNote, #inputSubtasks, #pickDueDate, #inputFrequency, #inputDuration').val('');
+    $('#selectPriority').val('4');
+    editingSubtasks = [];
 }
 
 // ---------- Reihenfolge per Drag & Drop ----------
@@ -473,14 +612,23 @@ let sortables = null;
 function initSortable(view) {
     if (typeof Sortable === 'undefined') return;
     if (!sortables) {
-        const common = { handle: '.drag-handle', animation: 150, onEnd: onDrop };
+        const common = {
+            draggable: '.row',
+            animation: 150,
+            delay: 220,
+            delayOnTouchOnly: true,
+            filter: '.check, .more, .subtask, a',
+            preventOnFilter: false,
+            ghostClass: 'ghost',
+            onEnd: onDrop,
+        };
         sortables = [
-            Sortable.create(document.querySelector('#card-content > table > tbody'), {
+            Sortable.create(document.getElementById('task-list'), {
                 ...common,
                 group: { name: 'tasks', pull: true, put: true },
             }),
             // In die langfristige Liste dürfen nur langfristige To-dos zurück
-            Sortable.create(document.getElementById('long-body'), {
+            Sortable.create(document.getElementById('long-list'), {
                 ...common,
                 group: { name: 'tasks', pull: true, put: (to, from, dragEl) => dragEl.dataset.long === 'true' },
             }),
@@ -490,8 +638,8 @@ function initSortable(view) {
 }
 
 function onDrop(evt) {
-    const fromKey = evt.from.id === 'long-body' ? 'long' : currentView;
-    const toKey = evt.to.id === 'long-body' ? 'long' : currentView;
+    const fromKey = evt.from.id === 'long-list' ? 'long' : currentView;
+    const toKey = evt.to.id === 'long-list' ? 'long' : currentView;
     if (fromKey === toKey && evt.oldIndex === evt.newIndex) return;
 
     const id = evt.item.getAttribute('data-id');
@@ -502,7 +650,7 @@ function onDrop(evt) {
     const toCache = fromKey === toKey ? fromCache : (readCache(toKey) || []);
     const byId = Object.fromEntries(toCache.map(t => [String(t.id), t]));
     byId[id] = task;
-    const ids = [...evt.to.querySelectorAll('tr[data-id]')].map(r => r.getAttribute('data-id'));
+    const ids = [...evt.to.querySelectorAll('.row[data-id]')].map(r => r.getAttribute('data-id'));
     const idx = ids.indexOf(id);
 
     const prev = byId[ids[idx - 1]]?.ordnung;
@@ -546,8 +694,9 @@ function loadLong() {
         method: 'GET',
         dataType: 'json',
         success: function (response) {
+            const changed = JSON.stringify(response) !== JSON.stringify(cached);
             writeCache('long', response);
-            if (JSON.stringify(response) !== JSON.stringify(cached)) {
+            if (changed && isDayView(currentView)) {
                 renderLong(response);
             }
         },
@@ -558,60 +707,95 @@ function loadLong() {
 }
 
 function renderLong(items) {
-    const $body = $('#long-body');
-    $body.empty();
+    const $list = $('#long-list');
+    $list.empty();
+    $('#long-count').text(items.length || '');
     if (items.length === 0) {
-        $body.append('<tr><td colspan="4" class="text-muted small" style="text-align: center;">Nichts geplant</td></tr>');
-        return;
+        $list.append('<div class="empty">Nichts geplant</div>');
+    } else {
+        items.forEach(item => $list.append(buildRow(item, currentView, true)));
     }
-    items.forEach(item => $body.append(buildLongRow(item)));
     initSortable(currentView);
 }
 
-function buildLongRow(item) {
-    const btn = (label, onclick) =>
-        `<button type="button" class="dropdown-item btn btn-sm btn-outline-success" onclick="${onclick}">${label}</button>`;
-    return `
-        <tr data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-long="true">
-            <td class="drag-handle" style="width: 1%; cursor: grab; touch-action: none;"><i class="bi bi-grip-vertical text-muted"></i></td>
-            ${nameCell(item, 'text-muted')}
-            ${deadlineCell(item)}
-            <td class="text-end" style="width: 1%;">
-                <div class="dropdown">
-                    <button class="btn btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"></button>
-                    <div class="dropdown-menu dropdown-menu-end">
-                        ${btn('Heute', `runTaskAction('to-today', ['${item.id}'])`)}
-                        ${btn('Erledigt', `runTaskAction('done', ['${item.id}'])`)}
-                        ${btn('Details', `openNote('${item.id}')`)}
-                        ${btn('Löschen', `startTaskDelete(['${item.id}'])`)}
-                    </div>
-                </div>
-            </td>
-        </tr>
-    `;
+function setLongCollapsed(collapsed) {
+    $('#long-section').toggleClass('collapsed', collapsed);
+    try { localStorage.setItem('quarto_long_collapsed', collapsed ? '1' : ''); } catch (e) {}
+}
+
+// ---------- Budget ----------
+
+function profileKey() {
+    return `quarto_profile_${$.cookie('user_id')}`;
+}
+
+function loadBudget() {
+    renderBudget();
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/profile`,
+        method: 'GET',
+        dataType: 'json',
+        success: function (p) {
+            try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch (e) {}
+            renderBudget();
+        }
+    });
+}
+
+function renderBudget() {
+    const p = readRaw(profileKey());
+    const items = readRaw(`quarto_today_privat_${$.cookie('user_id')}`) || [];
+    const used = items.reduce((sum, t) => sum + (Number(t.duration) || 0), 0);
+    if (!p || p.budgetToday == null) {
+        $('#budget-line, #side-budget-value').text(`${used} min`);
+        return;
+    }
+    const budget = Number(p.budgetToday) || 0;
+    const daily = Number(p.dailyLimit) || budget;
+    const carry = Math.max(0, budget - daily);
+    const text = `${used} / ${budget} min` + (carry ? ` · +${carry} Übertrag` : '');
+    $('#budget-line').text(text);
+    $('#side-budget-value').text(`${used} / ${budget} min`);
+
+    // Balken: grün bis zum Tageslimit, Übertrag heller dahinter
+    const base = Math.max(budget, used, 1);
+    const fill = Math.min(used, daily) / base * 100;
+    const carryFill = Math.max(0, Math.min(used, budget) - daily) / base * 100;
+    $('.bar .fill').css('width', fill + '%');
+    $('.bar .carry').css('width', carryFill + '%');
+    $('.bar').toggleClass('over', used > budget);
+}
+
+// ---------- Zähler in der Seitenleiste ----------
+
+function updateCounts() {
+    const uid = $.cookie('user_id');
+    const today = readRaw(`quarto_today_privat_${uid}`);
+    const work = readRaw(`quarto_work_arbeit_${uid}`);
+    $('#count-today').text(today && today.length ? today.length : '');
+    $('#count-work').text(work && work.length ? work.length : '');
 }
 
 // ---------- Sync zwischen Geräten ----------
 
-// Nicht neu zeichnen, während ein Menü offen ist, gezogen wird oder auf der Konto-Seite
+// Nicht neu zeichnen, während ein Menü oder Dialog offen ist, gezogen oder getippt wird
 function safeRefresh() {
-    if (currentView === 'account') return;
-    if ($('.dropdown-menu.show').length || $('.sortable-chosen').length) return;
+    if (!isAppPage() || currentView === 'account') return;
+    if (!$('#row-menu').prop('hidden') || $('.sortable-chosen').length || $('dialog[open]').length) return;
+    if ($(document.activeElement).is('#quickInput, #longInput') && document.activeElement.value) return;
     reloadCurrentView();
 }
 
-// Sofort neu laden, wenn das Fenster wieder in den Vordergrund kommt
 document.addEventListener('visibilitychange', function () {
     if (!document.hidden) safeRefresh();
 });
 window.addEventListener('focus', safeRefresh);
 
-// Leichtes Polling, solange das Fenster sichtbar ist
 setInterval(function () {
     if (!document.hidden) safeRefresh();
 }, 60000);
 
-// ---------- Notizen ----------
+// ---------- Notizen und Unteraufgaben ----------
 
 function linkify(text) {
     return text.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
@@ -619,30 +803,6 @@ function linkify(text) {
 
 // Aufgeklappte Tasks bleiben auch nach dem Neuzeichnen offen
 const openTasks = new Set();
-
-function nameCell(item, cls = '') {
-    const subs = item.subtasks || [];
-    if (!item.notiz && !subs.length) return `<td class="${cls}">${escapeHtml(item.name)}</td>`;
-    const done = subs.filter(s => s.done).length;
-    const badges = (subs.length ? ` <span class="text-muted small">${done}/${subs.length}</span>` : '')
-        + (item.notiz ? ' <i class="bi bi-journal-text text-muted small"></i>' : '');
-    const checklist = subs.map(s =>
-        `<div class="form-check subtask-item">`
-        + `<input class="form-check-input subtask-check" type="checkbox" id="sub-${item.id}-${s.id}" data-task="${item.id}" data-sub="${s.id}"${s.done ? ' checked' : ''}>`
-        + `<label class="form-check-label${s.done ? ' text-decoration-line-through text-muted' : ''}" for="sub-${item.id}-${s.id}">${escapeHtml(s.name)}</label>`
-        + `</div>`).join('');
-    const note = item.notiz ? `<div class="small text-muted mt-1">${linkify(escapeHtml(item.notiz))}</div>` : '';
-    const open = openTasks.has(String(item.id)) ? ' open' : '';
-    return `<td class="${cls} has-note${open}">${escapeHtml(item.name)}${badges}<div class="task-note mt-1">${checklist}${note}</div></td>`;
-}
-
-// Tippen auf den Namen klappt auf und zu, Links und Checkboxen bleiben bedienbar
-$(document).on('click', 'td.has-note', function (event) {
-    if ($(event.target).closest('a, .subtask-item').length) return;
-    const id = $(this).closest('tr').attr('data-id');
-    $(this).toggleClass('open');
-    if ($(this).hasClass('open')) openTasks.add(id); else openTasks.delete(id);
-});
 
 function rerenderLists() {
     renderTable(readCache(currentView) || [], currentView);
@@ -678,17 +838,15 @@ function putTask(id, body) {
     });
 }
 
-// Häkchen bei einer Unteraufgabe
-$(document).on('change', '.subtask-check', function () {
-    const taskId = this.getAttribute('data-task');
-    const subId = this.getAttribute('data-sub');
-    const checked = this.checked;
+function toggleSubtask(button) {
+    const taskId = button.getAttribute('data-task');
+    const subId = button.getAttribute('data-sub');
     const task = updateCachedTask(taskId, t => {
-        t.subtasks = (t.subtasks || []).map(s => String(s.id) === subId ? { ...s, done: checked } : s);
+        t.subtasks = (t.subtasks || []).map(s => String(s.id) === subId ? { ...s, done: !s.done } : s);
     });
     rerenderLists();
     if (task) putTask(taskId, { subtasks: task.subtasks });
-});
+}
 
 // Eine Zeile pro Unteraufgabe, unveränderte Zeilen behalten ihr Häkchen
 function linesToSubtasks(text, old) {
@@ -711,7 +869,7 @@ function openNote(id) {
     $('#noteModalTitle').text(task ? task.name : 'Details');
     $('#noteSubtasks').val(task ? (task.subtasks || []).map(s => s.name).join('\n') : '');
     $('#noteText').val(task && task.notiz ? task.notiz : '');
-    $('#noteModal').modal('show');
+    openDialog('#noteModal');
 }
 
 function saveNote() {
@@ -723,20 +881,16 @@ function saveNote() {
         t.notiz = notiz || null;
         t.subtasks = subtasks;
     });
-    $('#noteModal').modal('hide');
+    if (subtasks.length || notiz) openTasks.add(String(id));
+    closeDialog('#noteModal');
     rerenderLists();
     putTask(id, { notiz: notiz, subtasks: subtasks });
 }
 
 // ---------- Konto ----------
 
-$(document).on('click', '#account-link', function (event) {
-    event.preventDefault();
-    setView('account');
-});
-
 function showAccountMessage(text, ok) {
-    $('#accountMessage').toggleClass('text-success', ok).toggleClass('text-danger', !ok).text(text);
+    $('#accountMessage').toggleClass('ok', ok).toggleClass('error', !ok).text(text);
 }
 
 function loadAccount() {
@@ -746,6 +900,7 @@ function loadAccount() {
         method: 'GET',
         dataType: 'json',
         success: function (p) {
+            try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch (e) {}
             $('#dailyLimit').val(p.dailyLimit);
             $('#maxLimit').val(p.maxLimit);
             $('#budgetToday').text(p.budgetToday);
@@ -767,6 +922,7 @@ function saveAccount() {
             maxLimit: parseInt($('#maxLimit').val()),
         }),
         success: function (p) {
+            try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch (e) {}
             $('#budgetToday').text(p.budgetToday);
             showAccountMessage('Gespeichert.', true);
         },
@@ -777,7 +933,7 @@ function saveAccount() {
 }
 
 // ---------- Deadlines ----------
-// START DEADLINE
+
 const WEEKDAY_SHORT = { so: 0, mo: 1, di: 2, mi: 3, do: 4, fr: 5, sa: 6 };
 
 function startOfToday() {
@@ -821,23 +977,17 @@ function parseDeadline(text) {
 }
 
 function daysUntil(iso) {
-    const [y, m, d] = iso.split('-').map(Number);
+    const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
     return Math.round((new Date(y, m - 1, d) - startOfToday()) / 86400000);
 }
 
-function relativeDays(days) {
+// Kurz für schmale Zeilen: heute, morgen, gestern, in 5d, -3d
+function shortDays(days) {
     if (days === 0) return 'heute';
     if (days === 1) return 'morgen';
     if (days === -1) return 'gestern';
-    return days > 1 ? `in ${days} Tagen` : `vor ${-days} Tagen`;
+    return days > 1 ? `in ${days}d` : `${days}d`;
 }
-
-function deadlineCell(item) {
-    if (!item.deadline) return '<td></td>';
-    const days = daysUntil(item.deadline);
-    return `<td class="${days <= 2 ? 'text-danger' : 'text-muted'} text-end" style="font-size: small; white-space: nowrap;">${relativeDays(days)}</td>`;
-}
-// END DEADLINE
 
 // ---------- Schnelle Eingabe ----------
 
@@ -853,16 +1003,16 @@ function addQuick(kind, $input) {
     const created = names
         .map(raw => kind === 'long' ? parseDeadline(raw) : { name: raw, deadline: null })
         .map(({ name, deadline }, i) => ({
-        deadline: deadline,
-        id: `tmp-${Date.now()}-${i}`,
-        name: name,
-        dueDate: null,
-        priorityLevel: { id: null, name: null },
-        today: kind === 'today' ? 1 : 0,
-        spontan: kind === 'today',
-        longTerm: kind === 'long',
-        ordnung: maxOrder + 1000 * (i + 1),
-    }));
+            deadline: deadline,
+            id: `tmp-${Date.now()}-${i}`,
+            name: name,
+            dueDate: null,
+            priorityLevel: { id: null, name: null },
+            today: kind === 'today' ? 1 : 0,
+            spontan: kind === 'today',
+            longTerm: kind === 'long',
+            ordnung: maxOrder + 1000 * (i + 1),
+        }));
     const updated = cached.concat(created);
     writeCache(key, updated);
     if (kind === 'long') {
@@ -895,57 +1045,6 @@ function addQuick(kind, $input) {
     });
 }
 
-function quickAdd(event) {
-    event.preventDefault();
-    addQuick('today', $('#quickInput'));
-}
-
-function longAdd(event) {
-    event.preventDefault();
-    addQuick('long', $('#longInput'));
-}
-
-// ---------- Mehrfachauswahl ----------
-
-function toggleSelection(taskId, checked) {
-    if (checked) {
-        selectedIds.add(taskId);
-    } else {
-        selectedIds.delete(taskId);
-    }
-    updateBulkBar();
-}
-
-function clearSelection() {
-    selectedIds.clear();
-    $('.task-select').prop('checked', false);
-    updateBulkBar();
-}
-
-function bulkAction(action) {
-    const ids = [...selectedIds];
-    if (ids.length === 0) return;
-
-    if (action === 'delete') {
-        startTaskDelete(ids);
-    } else {
-        runTaskAction(action, ids);
-    }
-}
-
-function updateBulkBar() {
-    const count = selectedIds.size;
-    const $bar = $('#bulk-bar');
-
-    $bar.find('.bulk-btn').prop('disabled', count === 0);
-    $('#bulk-count').text(count > 0 ? `${count} ausgewählt` : '');
-
-    // Nur Aktionen zeigen, die zur aktuellen Ansicht passen
-    $bar.find('[data-view]').each(function () {
-        $(this).toggle($(this).data('view') === currentView);
-    });
-}
-
 // ---------- Helfer ----------
 
 function escapeHtml(text) {
@@ -957,57 +1056,126 @@ function escapeHtml(text) {
         .replace(/'/g, '&#39;');
 }
 
-// Helper function to map priority level to an icon
-function getPriorityIcon(priorityName) {
-    switch (priorityName) {
-        case 'ASAP':
-            return '<i style="color: #c35140" class="bi bi-exclamation-circle-fill"></i>';
-        case 'HIGH':
-            return '<i style="color: #c35140" class="bi bi-circle-fill"></i>';
-        case 'MEDIUM':
-            return '<i style="color: #ffc833" class="bi bi-circle-fill"></i>';
-        case 'LOW':
-            return '<i style="color: #40c351" class="bi bi-circle-fill"></i>';
-        default:
-            return '<i style="color: grey" class="bi bi-circle-fill"></i>';
-    }
-}
+// ---------- Bedienung ----------
 
-function getRelativeDate(dateStr) {
-    if (!dateStr) return '';
-    try {
-        const dueDate = new Date(dateStr); // Das Datum aus der übergebenen Zeichenkette erstellen
-        const today = new Date();
-        const delta = Math.floor((dueDate - today) / (1000 * 60 * 60 * 24)) + 1; // Differenz in Tagen
+function initUi() {
+    setLongCollapsed(localStorage.getItem('quarto_long_collapsed') === '1');
+    updateCounts();
 
-        if (delta === 0) {
-            return "heute";
-        } else if (delta === 1) {
-            return "morgen";
-        } else if (delta > 1) {
-            return `in ${delta} Tagen`;
-        } else if (delta === -1) {
-            return "gestern";
-        } else {
-            return `vor ${-delta} Tagen`;
+    $(document).on('click', '[data-view]', function (event) {
+        event.preventDefault();
+        setView(this.getAttribute('data-view'));
+    });
+
+    $('#kontext-toggle').on('click', 'button', function () {
+        setAllKontext(this.getAttribute('data-kontext'));
+    });
+
+    $('#quick-add').on('submit', function (event) {
+        event.preventDefault();
+        addQuick('today', $('#quickInput'));
+    });
+    $('#long-add').on('submit', function (event) {
+        event.preventDefault();
+        addQuick('long', $('#longInput'));
+    });
+
+    $('#long-toggle').on('click', function () {
+        setLongCollapsed(!$('#long-section').hasClass('collapsed'));
+    });
+
+    $('#addTaskButton').on('click', openNewTask);
+    $('#task-form').on('submit', function (event) {
+        event.preventDefault();
+        submitTaskForm();
+    });
+    $('#note-form').on('submit', function (event) {
+        event.preventDefault();
+        saveNote();
+    });
+    $('#account-form').on('submit', function (event) {
+        event.preventDefault();
+        saveAccount();
+    });
+    $('#logoutButton').on('click', logout);
+
+    // Zeilen: Häkchen, Menü, Unteraufgaben, Aufklappen
+    $(document).on('click', '.row .check', function (event) {
+        event.stopPropagation();
+        completeTask($(this).closest('.row')[0]);
+    });
+    $(document).on('click', '.row .more', function (event) {
+        event.stopPropagation();
+        openMenu(this);
+    });
+    $(document).on('click', '.subtask', function (event) {
+        event.stopPropagation();
+        toggleSubtask(this);
+    });
+    $(document).on('click', '.row.has-detail .row-main', function (event) {
+        if ($(event.target).closest('a, .subtask').length) return;
+        const id = $(this).closest('.row').attr('data-id');
+        if (openTasks.has(id)) openTasks.delete(id); else openTasks.add(id);
+        rerenderLists();
+    });
+    // Ohne Details öffnet ein Tipp auf den Namen das Bearbeiten
+    $(document).on('click', '.row:not(.has-detail) .row-main', function () {
+        const id = $(this).closest('.row').attr('data-id');
+        if (String(id).startsWith('tmp-')) return;
+        if (currentView === 'all') taskEdit(id); else openNote(id);
+    });
+
+    $('#row-menu').on('click', 'button', function (event) {
+        event.stopPropagation();
+        runMenuAction(this.getAttribute('data-action'), $('#row-menu').attr('data-for'));
+    });
+
+    $(document).on('click', '.info-btn', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        togglePop(this);
+    });
+
+    // Klick daneben schließt Menü und Popover
+    $(document).on('click', function (event) {
+        if (!$(event.target).closest('#row-menu, .more').length) closeMenu();
+        if (!$(event.target).closest('#pop, .info-btn').length) hidePop();
+    });
+    $(window).on('resize scroll', function () { closeMenu(); hidePop(); });
+
+    // Dialoge: Abbrechen-Knopf und Klick auf den Hintergrund
+    $(document).on('click', '[data-close]', function () {
+        closeDialog($(this).closest('dialog'));
+    });
+    $('dialog').on('click', function (event) {
+        if (event.target === this) closeDialog(this);
+    });
+    $('dialog').on('close', hidePop);
+
+    // Tastenkürzel auf dem Mac: N spontan, L langfristig, Esc raus
+    $(document).on('keydown', function (event) {
+        const typing = $(event.target).is('input, textarea, select');
+        if (event.key === 'Escape') {
+            closeMenu();
+            hidePop();
+            if (typing) event.target.blur();
+            return;
         }
-    } catch (error) {
-        return "Ungültiges Datumsformat. Bitte ein Datum im Format 'YYYY-MM-DD' übergeben.";
-    }
+        if (typing || event.metaKey || event.ctrlKey || event.altKey || $('dialog[open]').length) return;
+        if (!isDayView(currentView)) {
+            if (currentView === 'all' && event.key.toLowerCase() === 'n') {
+                event.preventDefault();
+                openNewTask();
+            }
+            return;
+        }
+        if (event.key.toLowerCase() === 'n') {
+            event.preventDefault();
+            $('#quickInput').trigger('focus');
+        } else if (event.key.toLowerCase() === 'l') {
+            event.preventDefault();
+            setLongCollapsed(false);
+            $('#longInput').trigger('focus');
+        }
+    });
 }
-
-function emptyForm() {
-    $("#inputTask").val('');
-    $("#inputNote").val('');
-    $("#inputSubtasks").val('');
-    $("#selectPriority").val('4');
-    $("#pickDueDate").val('');
-    $("#inputFrequency").val('');
-    $("#inputDuration").val('');
-}
-
-// Info-Badges (Bootstrap-Popover) aktivieren
-$(function () {
-    if (!window.bootstrap) return;
-    document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => bootstrap.Popover.getOrCreateInstance(el));
-});

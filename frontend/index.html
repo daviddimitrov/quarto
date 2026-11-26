@@ -1,15 +1,20 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0D0E10">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Quarto">
     <title>Quarto</title>
     <link rel="icon" type="image/x-icon" href="./assets/images/logo.ico">
     <link rel="apple-touch-icon" href="./assets/images/apple-touch-icon.png">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="https://code.jquery.com/ui/1.14.1/themes/base/jquery-ui.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js" type="text/javascript"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
@@ -18,289 +23,194 @@
 </head>
 
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container-fluid">
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
-                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <i class="bi-class-name"></i>
-            </button>
-            <a class="navbar-brand" href="#">Quarto</a>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link active" href="#" id="today-link" data-bs-toggle="collapse" data-bs-target="#navbarNav">Heute</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" id="work-link" data-bs-toggle="collapse" data-bs-target="#navbarNav">Arbeit</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" id="all-link" data-bs-toggle="collapse" data-bs-target="#navbarNav">Alle</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" id="account-link" data-bs-toggle="collapse" data-bs-target="#navbarNav">Konto</a>
-                    </li>
-                </ul>
+    <div class="app">
+
+        <!-- Seitenleiste, nur auf breiten Bildschirmen -->
+        <aside class="sidebar">
+            <div class="brand">Quarto</div>
+            <nav class="side-nav">
+                <button type="button" class="side-link" data-view="today"><i class="bi bi-sun"></i><span>Heute</span><span class="count mono" id="count-today"></span></button>
+                <button type="button" class="side-link" data-view="work"><i class="bi bi-briefcase"></i><span>Arbeit</span><span class="count mono" id="count-work"></span></button>
+                <button type="button" class="side-link" data-view="all"><i class="bi bi-list-ul"></i><span>Alle</span></button>
+            </nav>
+            <div class="side-budget" id="side-budget">
+                <div class="label">Budget heute</div>
+                <div class="mono value" id="side-budget-value">–</div>
+                <div class="bar"><span class="fill"></span><span class="carry"></span></div>
             </div>
-        </div>
-    </nav>
+            <button type="button" class="side-link side-account" data-view="account"><i class="bi bi-person-circle"></i><span>Konto</span></button>
+        </aside>
 
-    <div class="container d-flex flex-column justify-content-center align-items-center" style="padding-top: 25px">
-        <div class="card p-4 shadow-lg" style="width: 100%;">
-            <div id="card-content">
-                <h3 class="text-center mb-4 table-header">Heutige Aufgaben</h3>
-
-                <!-- Umschalter Privat/Arbeit, nur in "Alle" -->
-                <div id="kontext-toggle" class="btn-group btn-group-sm mb-3 w-100" role="group" style="display: none;">
-                    <button type="button" class="btn btn-outline-success" data-kontext="privat" onclick="setAllKontext('privat')">Privat</button>
-                    <button type="button" class="btn btn-outline-success" data-kontext="arbeit" onclick="setAllKontext('arbeit')">Arbeit</button>
+        <main class="main">
+            <!-- Navigation auf dem iPhone -->
+            <header class="topbar">
+                <div class="seg" role="tablist">
+                    <button type="button" data-view="today">Heute</button>
+                    <button type="button" data-view="work">Arbeit</button>
+                    <button type="button" data-view="all">Alle</button>
                 </div>
+                <button type="button" class="icon-btn" data-view="account" aria-label="Konto"><i class="bi bi-person-circle"></i></button>
+            </header>
 
-                <!-- Konto: Zeitlimits und Logout -->
-                <div id="account-section" style="display: none;">
-                    <form onsubmit="event.preventDefault(); saveAccount();">
-                        <div class="mb-3">
-                            <label for="dailyLimit" class="form-label">Tägliches Zeitlimit (Minuten)</label>
-                            <input type="number" class="form-control" id="dailyLimit" min="1" max="240" inputmode="numeric">
-                        </div>
-                        <div class="mb-3">
-                            <label for="maxLimit" class="form-label">Maximales Zeitlimit mit Übertrag (Minuten)</label>
-                            <input type="number" class="form-control" id="maxLimit" min="1" max="240" inputmode="numeric">
-                        </div>
-                        <p class="text-muted small">Heutiges Budget: <span id="budgetToday">–</span> Minuten</p>
-                        <div id="accountMessage" class="small mb-2"></div>
-                        <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-outline-success">Speichern</button>
-                            <button type="button" class="btn btn-outline-success ms-auto" onclick="logout();">Logout</button>
-                        </div>
+            <div class="page-head">
+                <h1 id="view-title">Heute</h1>
+                <span class="mono muted" id="view-date"></span>
+            </div>
+
+            <!-- Budget, nur in Heute -->
+            <div class="budget" id="budget" hidden>
+                <div class="mono budget-line" id="budget-line"></div>
+                <div class="bar"><span class="fill"></span><span class="carry"></span></div>
+            </div>
+
+            <!-- Umschalter Privat/Arbeit, nur in Alle -->
+            <div class="seg seg-small" id="kontext-toggle" hidden>
+                <button type="button" data-kontext="privat">Privat</button>
+                <button type="button" data-kontext="arbeit">Arbeit</button>
+            </div>
+
+            <div class="columns" id="lists">
+                <section class="col-today">
+                    <form id="quick-add" class="quick" autocomplete="off">
+                        <i class="bi bi-plus-lg"></i>
+                        <input id="quickInput" type="text" placeholder="Spontan: aufräumen, post" enterkeyhint="done">
+                        <kbd class="key-hint">N</kbd>
                     </form>
-                </div>
+                    <div id="task-list" class="list"></div>
+                    <button type="button" class="ghost-btn" id="addTaskButton" hidden><i class="bi bi-plus-lg"></i> Neue Aufgabe</button>
+                </section>
 
-                <!-- Schnelle Eingabe für spontane To-dos, nur in "Heute" -->
-                <form id="quick-add" class="mb-3" onsubmit="event.preventDefault(); if (window.quickAdd) quickAdd(event);" autocomplete="off">
-                    <input id="quickInput" type="text" class="form-control" placeholder="aufräumen, einkaufen, post" enterkeyhint="done">
+                <section class="col-long" id="long-section">
+                    <button type="button" class="section-head" id="long-toggle">
+                        <span>Langfristig</span>
+                        <span class="mono muted" id="long-count"></span>
+                        <span class="rule"></span>
+                        <i class="bi bi-chevron-down chevron"></i>
+                    </button>
+                    <div id="long-list" class="list long"></div>
+                    <form id="long-add" class="quick dashed" autocomplete="off">
+                        <i class="bi bi-plus-lg"></i>
+                        <input id="longInput" type="text" placeholder="Langfristig: Steuer bis 31.7." enterkeyhint="done">
+                        <kbd class="key-hint">L</kbd>
+                        <button type="button" class="info-btn" data-info="Mehrere To-dos mit Komma trennen.<br>Deadline mit <b>bis</b>: bis morgen, bis fr, bis 3.12., bis 3.12.2027<br>Ab zwei Tagen vorher wird sie orange." aria-label="Hilfe"><i class="bi bi-info-circle"></i></button>
+                    </form>
+                    <div class="drag-hint key-hint">nach links ziehen = heute</div>
+                </section>
+            </div>
+
+            <!-- Konto -->
+            <section id="account-section" class="account" hidden>
+                <form id="account-form">
+                    <label class="field">
+                        <span>Tägliches Zeitlimit</span>
+                        <div class="with-unit"><input type="number" id="dailyLimit" min="1" max="240" inputmode="numeric"><span class="mono muted">min</span></div>
+                    </label>
+                    <label class="field">
+                        <span>Maximal mit Übertrag</span>
+                        <div class="with-unit"><input type="number" id="maxLimit" min="1" max="240" inputmode="numeric"><span class="mono muted">min</span></div>
+                    </label>
+                    <p class="muted small">Heutiges Budget: <span class="mono" id="budgetToday">–</span> min</p>
+                    <div id="accountMessage" class="small"></div>
+                    <div class="actions">
+                        <button type="submit" class="btn primary">Speichern</button>
+                        <button type="button" class="btn" id="logoutButton">Logout</button>
+                    </div>
                 </form>
-
-                <table class="table table-hover align-middle mb-0">
-                    <tbody></tbody>
-                </table>
-                <button type="button" class="btn btn-sm btn-outline-success bi bi-plus" data-bs-toggle="modal" data-bs-target="#exampleModalCenter" id="addTaskButton"></button>
-
-                <!-- Langfristige To-dos, direkt unter der Heute-Liste -->
-                <div id="long-section">
-                    <table class="table table-hover align-middle mb-2">
-                        <tbody id="long-body"></tbody>
-                    </table>
-                    <form id="long-add" onsubmit="event.preventDefault(); if (window.longAdd) longAdd(event);" autocomplete="off">
-                        <div class="input-group"><input id="longInput" type="text" class="form-control" placeholder="Langfristig: Steuererklärung, Fahrrad reparieren" enterkeyhint="done"><span class="input-group-text bg-white"><a tabindex="0" role="button" class="info-badge ms-1" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="top" data-bs-html="true" data-bs-content="Mehrere To-dos mit Komma trennen.<br>Deadline mit <b>bis</b>: bis morgen, bis fr, bis 3.12., bis 3.12.2027<br>Ab zwei Tagen vorher wird sie rot."><i class="bi bi-info-circle"></i></a></span></div>
-                    </form>
-                </div>
-            </div>
-        </div>
+            </section>
+        </main>
     </div>
 
-    <!-- Notiz Modal -->
-    <div class="modal fade" id="noteModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="noteModalTitle">Notiz</h5>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" id="noteTaskId">
-                    <label for="noteSubtasks" class="form-label small text-muted">Unteraufgaben, eine pro Zeile</label>
-                    <textarea id="noteSubtasks" class="form-control mb-3" rows="5"></textarea>
-                    <label for="noteText" class="form-label small text-muted">Notiz</label>
-                    <textarea id="noteText" class="form-control" rows="3" placeholder="Infos, Links"></textarea>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-sm btn-outline-success" data-bs-dismiss="modal"><i class="bi bi-x"></i></button>
-                    <button type="button" class="btn btn-sm btn-outline-success" onclick="saveNote();"><i class="bi bi-check"></i></button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <!-- Menü für eine Zeile -->
+    <div id="row-menu" class="menu" hidden></div>
 
-    <!-- Delete Modal -->
-    <div class="modal fade" id="deleteTaskModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-sm">
-            <div class="modal-content">
-                <div class="modal-body">
-                    Soll <span id="toBeDeletedTaskName">"Hamster waschen"</span> wirklich gelöscht werden?
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-sm btn-outline-success" data-bs-dismiss="modal">Nein</button>
-                    <button type="button" class="btn btn-sm btn-outline-success" id="toBeDeletedTaskButton">Ja</button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <!-- Info-Popover -->
+    <div id="pop" class="pop" hidden></div>
 
-    <!-- Add Modal -->
-    <div class="modal fade" id="exampleModalCenter" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Neue Aufgabe</h5>
-                    <button type="button" class="btn btn-sm btn-outline-success bi bi-x close" data-bs-toggle="modal" data-bs-target="#exampleModalCenter"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="add-task-form">
-                        <div class="container-fluid">
-                            <div class="row" style="padding-bottom: 20px;">
-                                <div class="col-sm-12">
-                                    <div class="form-group">
-                                        <label for="inputTask">Aufgabe</label>
-                                        <input required type="text" class="form-control" id="inputTask" placeholder="Hamster waschen">
-                            <textarea id="inputNote" class="form-control mt-2" rows="2" placeholder="Notiz (optional)"></textarea>
-                            <textarea id="inputSubtasks" class="form-control mt-2" rows="3" placeholder="Unteraufgaben, eine pro Zeile (optional)"></textarea>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row" style="padding-bottom: 20px;">
-                                <div class="col-sm-6">
-                                    <div class="form-group">
-                                        <label for="selectPriority">Priorität</label>
-                                        <select class="form-control" id="selectPriority">
-                                            <option value="4">LOW</option>
-                                            <option value="3">MEDIUM</option>
-                                            <option value="2">HIGH</option>
-                                            <option value="1">ASAP</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="col-sm-6">
-                                    <div class="form-group">
-                                        <label for="pickDueDate">Fällig am</label>
-                                        <input required type="date" class="form-control" id="pickDueDate">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row" style="padding-bottom: 20px;">
-                                <div class="col-sm-6">
-                                    <div class="form-group">
-                                        <label for="inputFrequency">Rhythmus</label><a tabindex="0" role="button" class="info-badge ms-1" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="top" data-bs-html="true" data-bs-content="<b>7</b> = alle 7 Tage nach Erledigung<br><b>do</b> = jeden Donnerstag (mo, di, mi, do, fr, sa, so)<br><b>15.</b> = jeden Monat am 15.<br><b>eom</b> = letzter Tag im Monat<br><b>0</b> = einmalig"><i class="bi bi-info-circle"></i></a>
-                                        <input type="text" placeholder="7, do, 15. oder eom" autocapitalize="none" required class="form-control" id="inputFrequency">
-                                    </div>
-                                </div>
-                                <div class="col-sm-6">
-                                    <div class="form-group">
-                                        <label for="inputDuration">Dauer in Minuten</label>
-                                        <input required type="number" class="form-control" id="inputDuration" placeholder="Aufgabe dauert x Minuten">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="submit" class="btn btn-sm btn-outline-success bi bi-check task-create"></button>
-                        </div>
-                    </form>
-                </div>
+    <!-- Details: Unteraufgaben und Notiz -->
+    <dialog id="noteModal" class="dialog">
+        <form method="dialog" id="note-form">
+            <h2 id="noteModalTitle">Details</h2>
+            <input type="hidden" id="noteTaskId">
+            <label class="field">
+                <span>Unteraufgaben, eine pro Zeile</span>
+                <textarea id="noteSubtasks" rows="6"></textarea>
+            </label>
+            <label class="field">
+                <span>Notiz</span>
+                <textarea id="noteText" rows="3" placeholder="Infos, Links"></textarea>
+            </label>
+            <div class="actions">
+                <button type="button" class="btn" data-close>Abbrechen</button>
+                <button type="submit" class="btn primary" value="save">Speichern</button>
             </div>
-        </div>
-    </div>
+        </form>
+    </dialog>
 
-    <!-- Edit Modal -->
-    <div class="modal fade" id="editTaskModal" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Aufgabe bearbeiten</h5>
-                    <button type="button" class="btn btn-sm btn-outline-success bi bi-x close" data-bs-toggle="modal" data-bs-target="#editTaskModal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="edit-task-form">
-                        <input type="hidden" id="editTaskId">
-                        <div class="container-fluid">
-                            <div class="row" style="padding-bottom: 20px;">
-                                <div class="col-sm-12">
-                                    <div class="form-group">
-                                        <label for="editInputTask">Aufgabe</label>
-                                        <input required type="text" class="form-control" id="editInputTask">
-                            <textarea id="editInputNote" class="form-control mt-2" rows="2" placeholder="Notiz (optional)"></textarea>
-                            <textarea id="editInputSubtasks" class="form-control mt-2" rows="3" placeholder="Unteraufgaben, eine pro Zeile (optional)"></textarea>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row" style="padding-bottom: 20px;">
-                                <div class="col-sm-6">
-                                    <div class="form-group">
-                                        <label for="editSelectPriority">Priorität</label>
-                                        <select class="form-control" id="editSelectPriority">
-                                            <option value="4">LOW</option>
-                                            <option value="3">MEDIUM</option>
-                                            <option value="2">HIGH</option>
-                                            <option value="1">ASAP</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="col-sm-6">
-                                    <div class="form-group">
-                                        <label for="editPickDueDate">Fällig am</label>
-                                        <input required type="date" class="form-control" id="editPickDueDate">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row" style="padding-bottom: 20px;">
-                                <div class="col-sm-6">
-                                    <div class="form-group">
-                                        <label for="editInputFrequency">Rhythmus</label><a tabindex="0" role="button" class="info-badge ms-1" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="top" data-bs-html="true" data-bs-content="<b>7</b> = alle 7 Tage nach Erledigung<br><b>do</b> = jeden Donnerstag (mo, di, mi, do, fr, sa, so)<br><b>15.</b> = jeden Monat am 15.<br><b>eom</b> = letzter Tag im Monat<br><b>0</b> = einmalig"><i class="bi bi-info-circle"></i></a>
-                                        <input type="text" placeholder="7, do, 15. oder eom" autocapitalize="none" required class="form-control" id="editInputFrequency">
-                                    </div>
-                                </div>
-                                <div class="col-sm-6">
-                                    <div class="form-group">
-                                        <label for="editInputDuration">Dauer in Minuten</label>
-                                        <input required type="number" class="form-control" id="editInputDuration">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="submit" class="btn btn-sm btn-outline-success bi bi-check"></button>
-                        </div>
-                    </form>
-                </div>
+    <!-- Löschen -->
+    <dialog id="deleteTaskModal" class="dialog dialog-small">
+        <form method="dialog">
+            <p>Soll <b id="toBeDeletedTaskName"></b> wirklich gelöscht werden?</p>
+            <div class="actions">
+                <button type="button" class="btn" data-close>Nein</button>
+                <button type="button" class="btn danger" id="toBeDeletedTaskButton">Löschen</button>
             </div>
-        </div>
-    </div>
+        </form>
+    </dialog>
+
+    <!-- Neue Aufgabe und Bearbeiten -->
+    <dialog id="taskModal" class="dialog">
+        <form id="task-form">
+            <h2 id="taskModalTitle">Neue Aufgabe</h2>
+            <input type="hidden" id="editTaskId">
+            <label class="field">
+                <span>Aufgabe</span>
+                <input required type="text" id="inputTask" placeholder="Hamster waschen">
+            </label>
+            <div class="grid2">
+                <label class="field">
+                    <span>Fällig am</span>
+                    <input required type="date" id="pickDueDate">
+                </label>
+                <label class="field">
+                    <span>Rhythmus <button type="button" class="info-btn" data-info="<b>7</b> = alle 7 Tage nach Erledigung<br><b>do</b> = jeden Donnerstag (mo, di, mi, do, fr, sa, so)<br><b>15.</b> = jeden Monat am 15.<br><b>eom</b> = letzter Tag im Monat<br><b>0</b> = einmalig" aria-label="Hilfe"><i class="bi bi-info-circle"></i></button></span>
+                    <input type="text" placeholder="7, do, 15. oder eom" autocapitalize="none" required id="inputFrequency">
+                </label>
+                <label class="field private-only">
+                    <span>Priorität</span>
+                    <select id="selectPriority">
+                        <option value="4">Niedrig</option>
+                        <option value="3">Mittel</option>
+                        <option value="2">Hoch</option>
+                        <option value="1">ASAP</option>
+                    </select>
+                </label>
+                <label class="field private-only">
+                    <span>Dauer</span>
+                    <div class="with-unit"><input type="number" id="inputDuration" min="1" inputmode="numeric" placeholder="15"><span class="mono muted">min</span></div>
+                </label>
+            </div>
+            <label class="field">
+                <span>Unteraufgaben, eine pro Zeile</span>
+                <textarea id="inputSubtasks" rows="3"></textarea>
+            </label>
+            <label class="field">
+                <span>Notiz</span>
+                <textarea id="inputNote" rows="2" placeholder="Infos, Links"></textarea>
+            </label>
+            <div class="actions">
+                <button type="button" class="btn" data-close>Abbrechen</button>
+                <button type="submit" class="btn primary">Speichern</button>
+            </div>
+        </form>
+    </dialog>
 
     <script>
         $(document).ready(function () {
             checkAuth();
+            initUi();
             setView({'#alle': 'all', '#arbeit': 'work', '#konto': 'account'}[location.hash] || 'today');
-
-            $("#add-task-form").submit(function(event){
-                event.preventDefault();
-                addTask();
-            });
-
-            $("#edit-task-form").submit(function(event){
-                event.preventDefault();
-                saveTaskEdit();
-            });
-
-            $('#today-link').click(function(event) {
-                event.preventDefault();
-                setView('today');
-            });
-            $('#work-link').click(function(event) {
-                event.preventDefault();
-                setView('work');
-            });
-
-            $('#all-link').click(function(event) {
-                event.preventDefault();
-                setView('all');
-            });
-
-            $(document).on('change', '.task-select', function () {
-                toggleSelection($(this).val(), this.checked);
-            });
         });
     </script>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
 </body>
 
 </html>

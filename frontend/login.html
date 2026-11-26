@@ -1,59 +1,46 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0D0E10">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Quarto">
     <title>Quarto</title>
     <link rel="icon" type="image/x-icon" href="./assets/images/logo.ico">
     <link rel="apple-touch-icon" href="./assets/images/apple-touch-icon.png">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="https://code.jquery.com/ui/1.14.1/themes/base/jquery-ui.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js" type="text/javascript"></script>
     <script src="./js/main.js?v=149076d"></script>
     <link rel="stylesheet" href="./css/main.css?v=149076d">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 </head>
 
 <body>
-    <div class="container login d-flex flex-column justify-content-center align-items-center" style="padding-top: 25px">
-        <div class="card p-4 shadow-lg" style="width: 100%;">
-            <div id="card-content">
-                <div class="row">
-                    <div class="col-6 text-start">
-                        <h3>Login</h3>
-                    </div>
-                    <div class="col-6 text-end">
-                        <img src="./assets/images/logo.png" style="width: 40px;">
-                    </div>
-                </div>
-                <br/>
-                <div class="row">
-                    <form onsubmit="event.preventDefault(); login();">
-                        <div class="mb-3">
-                            <label for="loginName" class="form-label">Name</label>
-                            <input type="text" class="form-control" id="loginName" autocomplete="username" autocapitalize="none">
-                        </div>
-                        <div class="mb-3">
-                            <label for="loginPassword" class="form-label">Passwort</label>
-                            <input type="password" class="form-control" id="loginPassword" autocomplete="current-password">
-                        </div>
-                        <div id="loginError" class="text-danger small mb-2"></div>
-                        <div class="d-grid gap-2">
-                            <button type="submit" class="btn btn-outline-success">Login</button>
-                        </div>
-                    </form>
-                </div>
-
+    <div class="login-page">
+        <div class="login-card">
+            <div class="brand-row">
+                <h1>Quarto</h1>
+                <img src="./assets/images/logo.png" alt="">
             </div>
+            <form onsubmit="event.preventDefault(); login();">
+                <label class="field">
+                    <span>Name</span>
+                    <input type="text" id="loginName" autocomplete="username" autocapitalize="none">
+                </label>
+                <label class="field">
+                    <span>Passwort</span>
+                    <input type="password" id="loginPassword" autocomplete="current-password">
+                </label>
+                <div id="loginError"></div>
+                <button type="submit" class="btn primary">Login</button>
+            </form>
         </div>
-
-
-        <!-- Bootstrap JS -->
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
+    </div>
 </body>
 
 </html>
