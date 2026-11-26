@@ -119,3 +119,17 @@ button:hover{
 .popover {
     font-size: 0.85rem;
 }
+
+td.has-note {
+    cursor: pointer;
+}
+
+.task-note {
+    display: none;
+    white-space: pre-wrap;
+    line-height: 1.4;
+}
+
+td.has-note.open .task-note {
+    display: block;
+}

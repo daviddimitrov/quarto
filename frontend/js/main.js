@@ -280,6 +280,7 @@ function buildRow(item, view) {
             btn('Nicht Heute', `runTaskAction('not-today', ['${item.id}'])`),
             btn('Morgen', `runTaskAction('tomorrow', ['${item.id}'])`),
             btn('Nächste Woche', `runTaskAction('next-week', ['${item.id}'])`),
+            btn('Notiz', `openNote('${item.id}')`),
         ]
         : [
             btn('Erledigt', `runTaskAction('done', ['${item.id}'])`),
@@ -292,7 +293,7 @@ function buildRow(item, view) {
     return `
         <tr data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-long="${item.longTerm ? 'true' : 'false'}">
             ${isDayView(view) ? '<td class="drag-handle" style="width: 1%; cursor: grab; touch-action: none;"><i class="bi bi-grip-vertical text-muted"></i></td>' : ''}
-            <td>${escapeHtml(item.name)}</td>
+            ${nameCell(item)}
             <td class="text-muted" style="font-size: small; white-space: nowrap;">${item.deadline ? `<span class="text-danger">${relativeDays(daysUntil(item.deadline))}</span>` : getRelativeDate(item.dueDate)}</td>
             ${isDayView(view) || kontextFor(view) === 'arbeit' ? '' : `<td style="font-size: small;">${getPriorityIcon(item.priorityLevel.name)}</td>`}
             <td class="text-end" style="width: 1%;">
@@ -362,6 +363,7 @@ function taskEdit(taskId) {
         success: function (item) {
             $('#editTaskId').val(item.id);
             $('#editInputTask').val(item.name);
+            $('#editInputNote').val(item.notiz || '');
             $('#editSelectPriority').val(item.priorityLevel.id);
             $('#editPickDueDate').val(item.dueDate);
             $('#editInputFrequency').val(item.rhythm);
@@ -380,6 +382,7 @@ function saveTaskEdit() {
     const task = {
         priorityLevel: { id: kontextFor('all') === 'arbeit' ? null : parseInt($('#editSelectPriority').val()) },
         name: $('#editInputTask').val(),
+        notiz: $('#editInputNote').val().trim(),
         duration: kontextFor('all') === 'arbeit' ? null : parseInt($('#editInputDuration').val()),
         dueDate: $('#editPickDueDate').val(),
         rhythm: $('#editInputFrequency').val().trim(),
@@ -414,6 +417,7 @@ function addTask() {
         priority_level_id: kontextFor('all') === 'arbeit' ? null : priorityLevelId,
         user_id: $.cookie('user_id'),
         name: name,
+        notiz: $('#inputNote').val().trim(),
         duration: kontextFor('all') === 'arbeit' ? null : duration,
         dueDate: dueDate,
         rhythm: frequency,
@@ -564,7 +568,7 @@ function buildLongRow(item) {
     return `
         <tr data-id="${item.id}" data-name="${escapeHtml(item.name)}" data-long="true">
             <td class="drag-handle" style="width: 1%; cursor: grab; touch-action: none;"><i class="bi bi-grip-vertical text-muted"></i></td>
-            <td class="text-muted">${escapeHtml(item.name)}</td>
+            ${nameCell(item, 'text-muted')}
             ${deadlineCell(item)}
             <td class="text-end" style="width: 1%;">
                 <div class="dropdown">
@@ -572,6 +576,7 @@ function buildLongRow(item) {
                     <div class="dropdown-menu dropdown-menu-end">
                         ${btn('Heute', `runTaskAction('to-today', ['${item.id}'])`)}
                         ${btn('Erledigt', `runTaskAction('done', ['${item.id}'])`)}
+                        ${btn('Notiz', `openNote('${item.id}')`)}
                         ${btn('Löschen', `startTaskDelete(['${item.id}'])`)}
                     </div>
                 </div>
@@ -599,6 +604,65 @@ window.addEventListener('focus', safeRefresh);
 setInterval(function () {
     if (!document.hidden) safeRefresh();
 }, 60000);
+
+// ---------- Notizen ----------
+
+function linkify(text) {
+    return text.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+}
+
+function nameCell(item, cls = '') {
+    if (!item.notiz) return `<td class="${cls}">${escapeHtml(item.name)}</td>`;
+    return `<td class="${cls} has-note">${escapeHtml(item.name)} <i class="bi bi-journal-text text-muted small"></i>`
+        + `<div class="task-note small text-muted mt-1">${linkify(escapeHtml(item.notiz))}</div></td>`;
+}
+
+// Tippen auf den Namen klappt die Notiz auf und zu, Links bleiben klickbar
+$(document).on('click', 'td.has-note', function (event) {
+    if ($(event.target).closest('a').length) return;
+    $(this).toggleClass('open');
+});
+
+function findTask(id) {
+    for (const key of [currentView, 'long', 'all']) {
+        const task = (readCache(key) || []).find(t => String(t.id) === String(id));
+        if (task) return task;
+    }
+    return null;
+}
+
+function openNote(id) {
+    const task = findTask(id);
+    $('#noteTaskId').val(id);
+    $('#noteModalTitle').text(task ? task.name : 'Notiz');
+    $('#noteText').val(task && task.notiz ? task.notiz : '');
+    $('#noteModal').modal('show');
+}
+
+function saveNote() {
+    const id = $('#noteTaskId').val();
+    const notiz = $('#noteText').val().trim();
+    [currentView, 'long'].forEach(key => {
+        const items = readCache(key);
+        if (!items) return;
+        items.forEach(t => { if (String(t.id) === id) t.notiz = notiz || null; });
+        writeCache(key, items);
+    });
+    $('#noteModal').modal('hide');
+    renderTable(readCache(currentView) || [], currentView);
+    if (isDayView(currentView)) renderLong(readCache('long') || []);
+
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/task/${id}`,
+        method: 'PUT',
+        contentType: 'application/json',
+        data: JSON.stringify({ notiz: notiz }),
+        error: function () {
+            alert('Notiz konnte nicht gespeichert werden.');
+            reloadCurrentView();
+        }
+    });
+}
 
 // ---------- Konto ----------
 
@@ -870,6 +934,7 @@ function getRelativeDate(dateStr) {
 
 function emptyForm() {
     $("#inputTask").val('');
+    $("#inputNote").val('');
     $("#selectPriority").val('4');
     $("#pickDueDate").val('');
     $("#inputFrequency").val('');
