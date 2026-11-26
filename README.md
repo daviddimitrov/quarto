@@ -1,0 +1,555 @@
+# Quarto
+
+Quarto ist meine persönliche To-do-App und der einzige Ort für alle Aufgaben: Haushalt, Arbeit, Einmaliges und Langfristiges. Sie ersetzt Telegram-Bot, Microsoft To-Do und die alte Postgres-Version von Quarto.
+
+Die Leitidee kommt vom Vorgänger „Eleven Minutes“: Jeden Tag stellt Quarto eine kleine Liste privater Aufgaben zusammen, die in ein festes Zeitbudget passt. Wer jeden Tag ein paar Minuten investiert, hält den Haushalt sauber, ohne jemals einen Putzmarathon zu brauchen. Dazu kommen die Arbeitsaufgaben, spontane To-dos für den Tag und eine Liste langfristiger Vorhaben mit Deadlines.
+
+Anforderungen, an denen sich alle Entscheidungen messen:
+
+- **Schnelle Eingabe:** Spontane und langfristige To-dos sind mit einer Zeile Text angelegt, ohne Dialog.
+- **Schnell in der Bedienung:** Optimistic UI, die App reagiert sofort und synchronisiert im Hintergrund.
+- **Läuft auf iPhone und Mac:** als PWA auf dem Homescreen und als Dock-App.
+- **Kostet unter 1 € im Monat:** komplett serverless, alles im AWS Free Tier oder Cent-Bereich.
+- **Ein Nutzer:** Mehrbenutzerfähigkeit ist technisch vorhanden, aber kein Ziel.
+
+## Inhalt
+
+1. [Überblick](#überblick)
+2. [Repository](#repository)
+3. [Infrastruktur](#infrastruktur)
+4. [Authentifizierung](#authentifizierung)
+5. [Datenbank](#datenbank)
+6. [API](#api)
+7. [Fachlogik](#fachlogik)
+8. [Collector](#collector)
+9. [Frontend](#frontend)
+10. [Bedienung](#bedienung)
+11. [Entwicklung und Deployment](#entwicklung-und-deployment)
+12. [Kosten](#kosten)
+13. [Bekannte Grenzen und Ideen](#bekannte-grenzen-und-ideen)
+
+## Überblick
+
+```
+iPhone (PWA) / Mac (Dock-App)
+        │
+        │  HTTPS, statische Dateien
+        ▼
+GitHub Pages ── frontend/ (HTML, CSS, jQuery)
+        │
+        │  fetch mit Cognito-ID-Token
+        ▼
+API Gateway HTTP API ── JWT-Authorizer (Cognito)
+        │
+        ▼
+Lambda ApiFn (api.py) ────────────► DynamoDB Tabelle „quarto“
+                                          ▲
+EventBridge, täglich 03:00 UTC            │
+        │                                 │
+        ▼                                 │
+Lambda CollectFn (collect_today.py) ──────┘
+```
+
+- **Frontend:** statische Seite auf GitHub Pages, ohne Build-Schritt.
+- **Backend:** AWS CDK Stack in eu-central-1 mit HTTP API, zwei Python-Lambdas, einer DynamoDB-Tabelle und einem Cognito User Pool.
+- **Nachtlauf:** Der Collector stellt jede Nacht die Heute-Liste neu zusammen, berechnet das Budget und räumt spontane To-dos auf.
+
+## Repository
+
+```
+quarto/
+├── README.md                     diese Datei
+├── .github/workflows/pages.yml   Deployment des Frontends auf GitHub Pages
+├── frontend/
+│   ├── index.html                die App
+│   ├── login.html                Login-Seite
+│   ├── js/main.js                gesamte Frontend-Logik
+│   ├── css/main.css              Design „Dicht & dunkel“
+│   ├── assets/images/            Favicon, Logo, Apple-Touch-Icon
+│   └── bump.sh                   setzt die Cache-Version in den HTML-Dateien
+└── backend/
+    ├── bin/eleven-minutes.ts     CDK-App, instanziiert den Stack
+    ├── lib/eleven-minutes-stack.ts  gesamte Infrastruktur
+    ├── assets/python/_lambda/v2/
+    │   ├── api.py                REST-API
+    │   └── collect_today.py      Collector (Nachtlauf und manuell)
+    ├── cdk.json, package.json, tsconfig.json
+    └── .venv/                    lokale Python-Umgebung mit boto3 (nicht im Git)
+```
+
+Das Backend stammt aus dem früheren Repo `eleven-minutes`. Es wurde per Subtree nach `backend/` übernommen, das alte Repo ist auf GitHub archiviert. Daher heißen Stack und CDK-Dateien noch `ElevenMinutesStack` bzw. `eleven-minutes-*`. Ein Umbenennen würde den Stack in CloudFormation neu anlegen und lohnt sich nicht.
+
+## Infrastruktur
+
+Alles steht in `backend/lib/eleven-minutes-stack.ts`. Der Stack läuft in eu-central-1 (Frankfurt).
+
+### DynamoDB
+
+- Tabelle `quarto`, `TableV2`
+- Partition Key `PK` (String), Sort Key `SK` (String)
+- On-Demand-Abrechnung, also keine Kosten ohne Zugriffe
+- `RemovalPolicy.RETAIN`: Die Tabelle bleibt erhalten, auch wenn der Stack gelöscht wird
+
+### Lambdas
+
+Beide Funktionen nutzen denselben Code-Ordner `assets/python/_lambda/v2`, Python 3.13 auf ARM64 (Graviton, günstiger als x86). Die Umgebungsvariable `TABLE_NAME` zeigt auf die Tabelle.
+
+| Funktion | Handler | Speicher | Timeout | Zweck |
+|---|---|---|---|---|
+| ApiFn | `api.lambda_handler` | 512 MB | 10 s | alle API-Routen |
+| CollectFn | `collect_today.lambda_handler` | 256 MB | 60 s | Nachtlauf |
+
+`api.py` importiert `collect_for_user` aus `collect_today.py`, damit die API den Collector auch manuell auslösen kann.
+
+### API Gateway
+
+- HTTP API (v2), günstiger und schneller als REST API
+- CORS erlaubt `https://daviddimitrov.github.io` und `http://localhost:8000` für lokale Tests, Methoden `ANY`, Header `Content-Type` und `Authorization`
+- Jede Route hängt am `HttpJwtAuthorizer`, ohne gültiges Cognito-Token kommt nichts durch
+- Alle Routen zeigen auf dieselbe Lambda-Integration, `api.py` verteilt anhand von `event.routeKey`
+
+### EventBridge
+
+Regel `NightlyCollect` mit `cron(0 3 * * ? *)`, also täglich 03:00 UTC. Das ist 04:00 Uhr deutscher Winterzeit und 05:00 Uhr Sommerzeit. Ziel ist `CollectFn` ohne Pfadparameter, also für alle Nutzer und im Nachtmodus.
+
+### Cognito
+
+- User Pool `quarto`, Selbstregistrierung aus, Login nur per Benutzername, Groß- und Kleinschreibung egal
+- Passwort mindestens 10 Zeichen, keine Wiederherstellung per Mail oder SMS
+- App-Client `QuartoWeb` ohne Secret, Flow `USER_PASSWORD_AUTH`
+- ID- und Access-Token gelten 1 Stunde, Refresh-Token 365 Tage
+- `RETAIN`, der Pool überlebt ein Löschen des Stacks
+
+### Outputs
+
+Nach `cdk deploy` gibt der Stack `ApiUrl`, `UserPoolId` und `UserPoolClientId` aus. Die Werte landen in `cdk-outputs.json` (nicht im Git). API-URL und Client-ID stehen fest im Frontend (`apiPrefix` und `COGNITO_CLIENT_ID` in `main.js`).
+
+## Authentifizierung
+
+### Login
+
+1. `login.html` schickt Name und Passwort direkt an Cognito (`InitiateAuth` mit `USER_PASSWORD_AUTH`). Ein eigenes Backend für den Login gibt es nicht.
+2. Cognito liefert ID-Token, Ablaufzeit und Refresh-Token. Die landen im `localStorage` unter `quarto_id_token`, `quarto_token_exp` und `quarto_refresh_token`.
+3. Danach fragt das Frontend `GET /user?user_name=…` ab und speichert die interne Nutzer-ID im Cookie `user_id` (365 Tage).
+
+### Token im Alltag
+
+- Jeder Aufruf an die eigene API bekommt `Authorization: Bearer <ID-Token>` (`$.ajaxSetup`). Aufrufe an Cognito selbst bekommen den Header nicht.
+- Läuft das Token in weniger als 5 Minuten ab, erneuert die App es beim Start und wenn sie aus dem Hintergrund zurückkommt (`REFRESH_TOKEN_AUTH`).
+- Antwortet die API mit 401, wird einmal erneuert und neu geladen, höchstens einmal pro Minute, damit keine Schleife entsteht.
+- Lehnt Cognito den Refresh-Token ab (HTTP 400), wird ausgeloggt. Bei Netzfehlern nicht, damit ein Funkloch niemanden rauswirft.
+- Gleichzeitige Erneuerungen teilen sich ein Promise, es gibt nie zwei parallele Refresh-Aufrufe.
+
+### Prüfung im Backend
+
+- Der JWT-Authorizer im API Gateway prüft Signatur, Aussteller und Audience (Client-ID).
+- `api.py` liest `cognito:username` aus den Claims und sucht das Profil mit diesem Namen (Groß- und Kleinschreibung egal). Die Zuordnung wird pro Lambda-Instanz gecacht.
+- Steht in der URL eine andere `userId` als die des Tokens, gibt es 403. Im Body wird `user_id` immer mit der ID aus dem Token überschrieben. So kann niemand fremde Daten lesen oder schreiben, selbst mit gültigem Token.
+
+### Neuen Nutzer anlegen
+
+Selbstregistrierung ist aus. Ein Nutzer braucht zwei Dinge: einen Cognito-User (Konsole oder `aws cognito-idp admin-create-user` und `admin-set-user-password --permanent`) und ein Profil in DynamoDB mit `PK = USER#<id>`, `SK = PROFILE` und `name` gleich dem Cognito-Benutzernamen.
+
+## Datenbank
+
+Single-Table-Design: Alle Daten eines Nutzers liegen unter einem Partition Key, eine Query holt alles. Bei einer Handvoll bis wenigen hundert Aufgaben ist das schneller und billiger als jeder Index.
+
+### Profil
+
+`PK = USER#<id>`, `SK = PROFILE`
+
+| Attribut | Typ | Bedeutung |
+|---|---|---|
+| `name` | String | Login-Name, muss zum Cognito-User passen |
+| `default_duration` | Zahl | tägliches Zeitlimit in Minuten (Konto: „Tägliches Zeitlimit“) |
+| `max_duration` | Zahl | Obergrenze inklusive Übertrag (Konto: „Maximal mit Übertrag“) |
+| `budget` | Zahl | heutiges Budget, vom Collector jede Nacht berechnet |
+| `done_minutes` | Zahl | heute erledigte private Minuten |
+| `done_date` | String | Datum, zu dem `done_minutes` gehört, ISO `YYYY-MM-DD` |
+
+### Aufgabe
+
+`PK = USER#<id>`, `SK = TASK#<uuid>`
+
+| Attribut | Typ | Bedeutung |
+|---|---|---|
+| `id` | String | UUID ohne Bindestriche, identisch mit dem Teil hinter `TASK#` |
+| `name` | String | Titel |
+| `kontext` | String | `privat` (Standard) oder `arbeit` |
+| `duration` | Zahl | Dauer in Minuten, nur privat |
+| `priority` | Zahl | 1 ASAP, 2 Hoch, 3 Mittel, 4 Niedrig, nur privat |
+| `due_date` | String | nächste Fälligkeit, ISO |
+| `rhythm` | Zahl | Intervall in Tagen, wenn der Rhythmus eine Zahl ist |
+| `regel` | String | Kalenderregel statt Intervall, siehe unten |
+| `today` | Zahl | 1 = steht auf der Heute- bzw. Arbeit-Liste |
+| `ordnung` | Zahl | Sortierschlüssel für Drag & Drop |
+| `spontan` | Bool | spontanes To-do für heute |
+| `long_term` | Bool | langfristiges Vorhaben |
+| `deadline` | String | Deadline langfristiger Aufgaben, ISO |
+| `notiz` | String | Freitext, Links werden im Frontend klickbar |
+| `subtasks` | Liste | `[{id, name, done}]` |
+
+Leere Werte werden nicht gespeichert, das Attribut fehlt dann einfach.
+
+### Rhythmus und Regeln
+
+Der Rhythmus wird als Text eingegeben und in `rhythm` oder `regel` übersetzt (`parse_rhythm`). In der API kommt er als Text zurück (`rhythm_label`).
+
+| Eingabe | gespeichert | nächste Fälligkeit nach Erledigung |
+|---|---|---|
+| `7` | `rhythm = 7` | heute + 7 Tage |
+| `do` (mo, di, mi, do, fr, sa, so) | `regel = woche:3` | nächster Donnerstag |
+| `15.` | `regel = monatstag:15` | nächster 15., in kurzen Monaten der letzte Tag |
+| `eom` (auch `monatsende`, `ende`, `letzter`) | `regel = monat:letzter` | nächster Monatsletzter |
+| `0` oder leer | nichts | einmalig, wird beim Erledigen gelöscht |
+
+Bei Zahlen zählt das Intervall ab dem Tag des Erledigens, eine verspätet erledigte Aufgabe verschiebt also den Takt. Bei Regeln zählt der Kalender: Ausgangspunkt ist der spätere von heute und dem bisherigen Fälligkeitstag.
+
+### Ordnung
+
+`ordnung` ist ein Gleitkommaschlüssel (Fractional Indexing). Wird eine Aufgabe zwischen zwei andere gezogen, bekommt sie den Mittelwert der Nachbarn, am Rand Nachbar ± 1000. Es muss also immer nur die verschobene Aufgabe gespeichert werden. Neue Aufgaben landen mit höchster Ordnung + 1000 am Ende.
+
+## API
+
+Basis-URL: `https://vs7ubni3p3.execute-api.eu-central-1.amazonaws.com/`. Alle Routen brauchen das ID-Token, Antworten sind JSON.
+
+| Methode und Pfad | Funktion | Beschreibung |
+|---|---|---|
+| `GET /user?user_name=` | `list_users` | Profil zum Namen, liefert die Nutzer-ID |
+| `GET /user/{userId}/profile` | `get_profile_route` | Limits, heutiges Budget, heute erledigte Minuten |
+| `PUT /user/{userId}/profile` | `put_profile_route` | `dailyLimit` und `maxLimit` setzen |
+| `GET /user/{userId}/tasks?kontext=` | `list_tasks` | alle nicht langfristigen Aufgaben, nach Fälligkeit |
+| `GET /user/{userId}/tasks/today?kontext=` | `list_tasks` | Aufgaben mit `today = 1`, nach Ordnung |
+| `GET /user/{userId}/tasks/long?kontext=` | `list_tasks` | langfristige ohne `today`, nach Ordnung |
+| `PATCH /user/{userId}/tasks/today` | `collect` | Collector sofort laufen lassen (ohne Nachtmodus) |
+| `POST /task` | `create_task` | Aufgabe anlegen |
+| `GET /user/{userId}/task/{taskId}` | `get_task` | eine Aufgabe |
+| `PUT /user/{userId}/task/{taskId}` | `update_task` | Felder ändern, nur die mitgeschickten |
+| `DELETE /user/{userId}/task/{taskId}` | `delete_task` | löschen |
+| `PATCH /user/{userId}/task/{taskId}/done` | `set_done` | erledigt, siehe Fachlogik |
+| `PATCH /user/{userId}/task/{taskId}/today` | `toggle_today` | Heute-Markierung umschalten |
+| `PATCH /user/{userId}/task/{taskId}/tomorrow` | `shift(1)` | fällig morgen, runter von heute |
+| `PATCH /user/{userId}/task/{taskId}/next-week` | `shift(7)` | fällig in 7 Tagen, runter von heute |
+
+`kontext` ist `privat` (Standard) oder `arbeit`.
+
+### Format einer Aufgabe
+
+```json
+{
+  "id": "3f2a…",
+  "name": "Küche putzen",
+  "priorityLevel": { "id": 4, "name": "LOW" },
+  "duration": 15,
+  "dueDate": "2026-11-27",
+  "rhythm": "21",
+  "today": 1,
+  "ordnung": 3000,
+  "spontan": false,
+  "longTerm": false,
+  "kontext": "privat",
+  "deadline": null,
+  "notiz": null,
+  "subtasks": [{ "id": "a1b2c3d4", "name": "Herd", "done": false }],
+  "userId": { "id": "…", "name": "david", "default_duration": 15 }
+}
+```
+
+### Eingaben
+
+`parse` nimmt camelCase und snake_case an (`dueDate` oder `due_date`, `longTerm` oder `long_term`, `priorityLevel.id` oder `priority_level_id`). Leere Strings werden zu „nicht gesetzt“, Zahlen als Text werden umgewandelt. Unteraufgaben dürfen als Liste von Strings oder als Objekte kommen. Fehlende IDs werden ergänzt, leere Namen fallen weg.
+
+Ein PUT ändert nur die mitgeschickten Felder. Das Frontend schickt beim Abhaken einer Unteraufgabe also nur `{ "subtasks": [...] }`, beim Verschieben nur `{ "ordnung": …, "today": … }`.
+
+### Profil
+
+```json
+{ "name": "david", "dailyLimit": 15, "maxLimit": 30, "budgetToday": 18, "doneToday": 4 }
+```
+
+`PUT` prüft: beide Werte zwischen 1 und 240, Maximum mindestens so groß wie das Tageslimit. Sonst gibt es 400 mit deutscher Fehlermeldung.
+
+### Fehler
+
+404 bei unbekannter Route, Aufgabe oder Profil, 403 bei fremder Nutzer-ID, 500 mit Fehlertext bei Ausnahmen. Die Ausnahme landet zusätzlich in CloudWatch Logs.
+
+## Fachlogik
+
+### Drei Arten von Aufgaben
+
+**Wiederkehrend:** der Normalfall im Haushalt. Hat Fälligkeit, Rhythmus, Dauer und Priorität. Der Collector holt sie auf die Heute-Liste, wenn sie fällig sind und ins Budget passen.
+
+**Spontan:** Wird über das Spontan-Feld angelegt, steht sofort auf heute (`today = 1`), hat keine Dauer und keinen Rhythmus. Private spontane To-dos verfallen in der Nacht, ob erledigt oder nicht. Der Tag beginnt also leer. Spontane Aufgaben auf Arbeit bleiben, bis sie erledigt sind.
+
+**Langfristig:** Wird über das Langfristig-Feld angelegt, optional mit Deadline. Steht in der eigenen Liste unter Heute und hat keine Fälligkeit. Per Drag & Drop wandert sie auf heute und zurück. Zwei Tage vor der Deadline holt der Collector sie automatisch auf heute.
+
+### Privat und Arbeit
+
+Jede Aufgabe hat einen Kontext.
+
+- **Privat:** mit Dauer, Priorität und Zeitbudget, an allen sieben Tagen.
+- **Arbeit:** ohne Dauer, Priorität und Budget. An Werktagen (Mo–Fr) kommt alles Fällige auf die Arbeit-Liste, am Wochenende nichts. Beispiele: Outlook aufräumen alle 7 Tage, Snapshot alle 30 Tage, Staffit und Core Weekly.
+
+Die Listen sind komplett getrennt: Heute zeigt nur Privates, Arbeit nur Arbeit, Alle hat einen Umschalter.
+
+### Erledigen
+
+`set_done`:
+
+1. Ist die Aufgabe privat, nicht langfristig und hat eine Dauer, werden ihre Minuten auf `done_minutes` des Profils addiert. Ist `done_date` nicht heute, beginnt der Zähler bei null.
+2. Spontane Aufgaben und solche ohne nächste Fälligkeit (einmalig, langfristig) werden gelöscht.
+3. Wiederkehrende bekommen die nächste Fälligkeit, `today = 0` und alle Unteraufgaben wieder auf offen.
+
+Unteraufgaben werden nie automatisch erledigt, auch wenn alle abgehakt sind. Die Hauptaufgabe hakt man selbst ab.
+
+### Nicht heute, morgen, nächste Woche
+
+- **Nicht heute:** schaltet nur `today` um, die Fälligkeit bleibt. Die Aufgabe kann also morgen wieder auftauchen.
+- **Morgen / Nächste Woche:** setzt die Fälligkeit auf heute + 1 bzw. + 7 und `today = 0`.
+
+### Budget und Übertrag
+
+- **Tägliches Zeitlimit** (`default_duration`): so viele private Minuten plant der Collector pro Tag ein.
+- **Übertrag:** Bleiben abends geplante private Minuten offen, kommen sie auf das Budget des nächsten Tages: `budget = min(Maximum, Tageslimit + offene Minuten)`. So rutscht ein schlechter Tag nicht einfach weg, kann sich aber auch nicht endlos aufstauen.
+- **Maximum** (`max_duration`): Deckel für das Budget mit Übertrag.
+
+Spontane und langfristige Aufgaben zählen weder zum Budget noch zum Übertrag.
+
+### Fortschritt
+
+Der Balken auf der Heute-Seite zeigt erledigte Minuten im Verhältnis zum heutigen Budget, zum Beispiel `4 / 18 min · +3 Übertrag`. Er wächst also mit jedem Haken. Sind alle Aufgaben mit Dauer erledigt, ist er voll, auch wenn die geplanten Minuten das Budget nicht ganz ausgeschöpft haben.
+
+### Bedarf
+
+Die Konto-Seite rechnet aus, wie viele Minuten pro Tag die wiederkehrenden privaten Aufgaben im Schnitt brauchen: Summe aus Dauer geteilt durch Rhythmus in Tagen. Wochentage zählen als 7 Tage, Monatsregeln als 30,44. Spontane, langfristige und einmalige Aufgaben zählen nicht mit.
+
+Liegt der Bedarf über dem Tageslimit, wächst der Rückstand zwangsläufig. Dann wird die Zahl orange, und ein Link setzt das Limit auf den aufgerundeten Bedarf. Darunter stehen die acht teuersten Aufgaben, bei denen ein längerer Rhythmus am meisten bringt. Die Berechnung läuft komplett im Frontend auf Basis von `GET /tasks`.
+
+## Collector
+
+`collect_today.py`, Funktion `collect_for_user(user_id, nightly)`. Er läuft nachts für alle Nutzer (`nightly = True`) und auf Anfrage über `PATCH /tasks/today` für einen Nutzer (`nightly = False`).
+
+### Ablauf
+
+1. **Budget:** Nachts werden die offenen privaten Minuten von gestern gezählt: `today = 1`, nicht spontan, nicht langfristig. Daraus wird das neue Budget berechnet und gespeichert. Tagsüber wird das gespeicherte Budget nur gelesen.
+2. **Aufräumen:** Nachts werden alle privaten spontanen To-dos gelöscht.
+3. **Fällige private Aufgaben:** nicht spontan, nicht langfristig, mit `due_date <= heute`.
+4. **Auswahl privat**, in zwei Durchgängen:
+   - **Festhängende zuerst:** Eine Aufgabe hängt fest, wenn sie um ihren eigenen Rhythmus überfällig ist, höchstens aber 7 Tage. Bei „alle 2 Tage“ reichen also 2 Tage, bei „alle 21 Tage“ 7 Tage. Sie werden nach relativem Rückstand sortiert (überfällige Tage geteilt durch Rhythmus). Die erste kommt immer rein, auch wenn sie allein das Budget füllt, die weiteren nur, wenn sie noch passen. Ohne diesen Durchgang kämen große Aufgaben mit niedriger Priorität nie dran, weil kleinere oder wichtigere fast immer vorher das Budget belegen.
+   - **Dann der Rest:** sortiert nach Priorität, Fälligkeit und Rhythmus (kurzer Rhythmus zuerst). Jede Aufgabe, die noch ins Budget passt, kommt rein. Danach wird weitergesucht, sodass kleine Aufgaben übrige Minuten auffüllen.
+5. **Arbeit:** an Werktagen alle fälligen Arbeitsaufgaben, ohne Budget.
+6. **Deadlines:** langfristige Aufgaben mit Deadline in höchstens zwei Tagen. Private immer, Arbeit nur an Werktagen, beide ohne Budget.
+7. **Schreiben:** Für jede nicht spontane Aufgabe wird `today` auf 1 oder 0 gesetzt, aber nur wenn sich der Wert ändert. Spontane behalten ihr `today`.
+
+Rückgabe: Anzahl ausgewählter Aufgaben, verplante Minuten, Budget, Anzahl Arbeit und Deadline.
+
+### Was der Collector bewusst nicht tut
+
+- Er verschiebt keine Fälligkeiten. Eine überfällige Aufgabe bleibt überfällig, bis sie erledigt oder verschoben ist. Rückstand soll sichtbar bleiben.
+- Er rührt manuelle Änderungen bis zur nächsten Nacht nicht an, solange niemand `PATCH /tasks/today` aufruft. Wer tagsüber eine Aufgabe auf heute zieht, behält sie.
+
+## Frontend
+
+Vanilla JavaScript mit jQuery 3.6, jQuery Cookie und SortableJS 1.15.6, alles vom CDN. Icons sind Bootstrap Icons, Schrift Geist und Geist Mono von Google Fonts. Es gibt kein Framework, keinen Build-Schritt und kein npm. Die drei Dateien `index.html`, `main.js` und `main.css` sind die ganze App.
+
+### Design „Dicht & dunkel“
+
+Inspiriert von Linear und Raycast: dunkler Hintergrund, dichte Zeilen, Zahlen in Monospace, Farbe nur als Signal.
+
+| Rolle | Farbe |
+|---|---|
+| Hintergrund | `#0D0E10` |
+| Seitenleiste | `#0A0B0C` |
+| Flächen | `#15161A`, `#17181B` |
+| Rahmen | `#24262A` |
+| Text | `#E7E8EB` |
+| gedämpft | `#9A9DA5`, `#6E717A` |
+| Akzent, erledigt, Fortschritt | `#4ADE80` |
+| überfällig, Deadline bald | `#F08C5A` |
+
+Alle Werte stehen als CSS-Variablen in `:root`.
+
+### Layout
+
+- **iPhone (unter 900 px):** oben eine Umschaltleiste Heute / Arbeit / Alle und ein Konto-Knopf, darunter Budgetzeile, Spontan-Feld, Heute-Liste und die einklappbare Langfristig-Liste. Zeilen sind 44 px hoch, Eingabefelder nutzen 16 px Schrift, damit Safari nicht zoomt. Safe-Area-Abstände für Notch und Home-Indicator sind eingerechnet.
+- **Mac (ab 900 px):** links eine Seitenleiste mit Navigation, Zählern, Budget und Konto. Rechts Heute und Langfristig nebeneinander, Langfristig als eigenes Panel. Zeilen sind 40 px hoch, „⋯“ und Griff erscheinen beim Überfahren, Unteraufgaben stehen in zwei Spalten.
+
+### Ansichten
+
+- **Heute:** private Aufgaben mit `today = 1`, darunter bzw. daneben Langfristig.
+- **Arbeit:** Arbeitsaufgaben mit `today = 1`, darunter bzw. daneben die langfristigen Arbeitsaufgaben.
+- **Alle:** alle nicht langfristigen Aufgaben eines Kontexts mit Fälligkeit, Rhythmus, Dauer und Prioritätspunkt. Der Umschalter Privat/Arbeit wird gemerkt.
+- **Konto:** Limits, heutiges Budget und Bedarf, dazu Logout.
+
+Die Ansicht steht im URL-Hash (`#heute`, `#arbeit`, `#alle`, `#konto`), ein Reload bleibt also auf derselben Seite.
+
+### Optimistic UI und Cache
+
+Jede Liste liegt im `localStorage` unter `quarto_<ansicht>_<kontext>_<userId>`, das Profil unter `quarto_profile_<userId>`.
+
+1. Beim Öffnen einer Ansicht wird sofort der Cache gezeichnet.
+2. Parallel kommt der aktuelle Stand vom Server. Weicht er ab, wird neu gezeichnet und der Cache ersetzt.
+3. Jede Aktion ändert zuerst Cache und Oberfläche: Die Zeile verschwindet, die Minuten zählen zum Fortschritt, die Reihenfolge ändert sich. Erst dann geht der Request raus. Nach Abschluss wird neu geladen, bei Fehlern gibt es einen Hinweis.
+4. Neue To-dos aus den Schnellfeldern bekommen eine temporäre ID `tmp-…` und erscheinen sofort. Bis der Server antwortet, lassen sie sich nicht abhaken.
+
+### Sync zwischen Geräten
+
+Es gibt keine Push-Verbindung, stattdessen wird neu geladen:
+
+- wenn die App aus dem Hintergrund zurückkommt (`visibilitychange`) oder das Fenster den Fokus bekommt
+- alle 60 Sekunden, solange die App sichtbar ist
+
+`safeRefresh` überspringt das Neuladen, solange ein Menü oder Dialog offen ist, gerade gezogen wird oder in einem Schnellfeld Text steht. So zerreißt der Sync nie eine laufende Eingabe.
+
+### Zeilen
+
+Jede Aufgabe ist eine Zeile mit Kästchen, Name, Infos rechts und „⋯“-Menü.
+
+- **Kästchen:** Ein Tipp hakt sofort ab, das Kästchen wird grün und die Zeile gleitet raus. Spontane Aufgaben haben ein gestricheltes Kästchen.
+- **Rechts:** Überfälligkeit in Tagen (orange, `-4d`), Deadline-Chip (orange ab zwei Tagen vorher), Dauer (`3m`). In Alle zusätzlich Fälligkeit, Rhythmus und Prioritätspunkt.
+- **Neben dem Namen:** Fortschritt der Unteraufgaben (`2/9`) und ein Symbol, wenn es eine Notiz gibt.
+- **Name:** Hat die Aufgabe Unteraufgaben oder Notiz, klappt ein Tipp sie auf: Fortschrittslinie, abhakbare Unteraufgaben, Notiz mit klickbaren Links. Aufgeklappte bleiben über Neuladen hinweg offen. Ohne Details öffnet ein Tipp den Details-Dialog (Heute, Arbeit) bzw. den Bearbeiten-Dialog (Alle).
+- **„⋯“-Menü:**
+  - Heute und Arbeit: Nicht heute, Morgen, Nächste Woche, Details
+  - Langfristig: Heute, Details, Löschen
+  - Alle: Bearbeiten, Morgen, Nächste Woche, Löschen
+
+### Drag & Drop
+
+SortableJS auf beiden Listen derselben Gruppe. Auf dem iPhone startet das Ziehen nach 220 ms Gedrückthalten, auf dem Mac sofort. Kästchen, Menü, Unteraufgaben und Links starten kein Ziehen.
+
+- **Innerhalb einer Liste:** neue Ordnung aus den Nachbarn, siehe [Ordnung](#ordnung).
+- **Von Langfristig nach Heute:** `today = 1`.
+- **Von Heute nach Langfristig:** nur bei langfristigen Aufgaben erlaubt, `today = 0`.
+
+In Alle ist Ziehen aus, dort wird nach Fälligkeit sortiert.
+
+### Schnelleingabe
+
+- **Spontan-Feld:** Text eingeben, Enter. Mehrere To-dos mit Komma trennen: `aufräumen, post, müll`.
+- **Langfristig-Feld:** genauso, optional mit Deadline nach `bis`:
+  - `bis heute`, `bis morgen`, `bis übermorgen`
+  - `bis fr` oder `bis freitag`: nächster Freitag, heute zählt mit
+  - `bis 3.12.`: der nächste 3.12., liegt er in der Vergangenheit, im nächsten Jahr
+  - `bis 3.12.27` oder `bis 3.12.2027`
+- Ein Info-Knopf am Feld erklärt die Syntax.
+
+### Dialoge
+
+Native `<dialog>`-Elemente, ein Klick auf den Hintergrund schließt sie.
+
+- **Neue Aufgabe / Bearbeiten:** Name, Fälligkeit, Rhythmus (mit Info zur Syntax), Priorität, Dauer, Unteraufgaben (eine pro Zeile), Notiz. Bei Arbeit sind Priorität und Dauer ausgeblendet.
+- **Details:** nur Unteraufgaben und Notiz, für Heute, Arbeit und Langfristig.
+- **Löschen:** Rückfrage mit Namen.
+
+Beim Bearbeiten der Unteraufgaben als Text behalten unveränderte Zeilen ihr Häkchen.
+
+### Tastenkürzel (Mac)
+
+| Taste | Wirkung |
+|---|---|
+| `N` | in Heute/Arbeit ins Spontan-Feld, in Alle neue Aufgabe |
+| `L` | ins Langfristig-Feld |
+| `Esc` | Menü und Popover schließen, Feld verlassen |
+
+Auf Touch-Geräten sind die Tastenhinweise ausgeblendet.
+
+### Cache-Busting
+
+`main.js` und `main.css` werden mit `?v=<commit>` eingebunden. `bump.sh` setzt den Wert auf den aktuellen Commit-Hash, sodass Browser und PWA nach jedem Deployment die neuen Dateien laden statt alter Kopien.
+
+### PWA und Dock-App
+
+- **iPhone:** Safari, Teilen, „Zum Home-Bildschirm“. Die Meta-Tags sorgen für Vollbild, dunkle Statusleiste und das Apple-Touch-Icon.
+- **Mac:** Safari, Ablage, „Zum Dock hinzufügen“.
+
+Ein Widget gibt es bewusst nicht: Ohne Interaktion wäre es nutzlos.
+
+## Bedienung
+
+Typischer Tag:
+
+1. Morgens die App öffnen. Die Heute-Liste ist schon gefüllt, der Balken steht bei 0.
+2. Aufgaben abhaken, der Balken wächst.
+3. Was spontan anfällt, ins Spontan-Feld tippen. Es verschwindet über Nacht von selbst.
+4. Passt eine Aufgabe heute nicht: „⋯“, Morgen oder Nächste Woche.
+5. Größere Vorhaben ins Langfristig-Feld, bei Bedarf mit `bis …`. Wenn Zeit ist, auf Heute ziehen.
+
+Neue wiederkehrende Aufgaben legt man in Alle an, Rhythmus und Dauer ehrlich schätzen. Die Konto-Seite zeigt danach, ob das Limit noch reicht.
+
+## Entwicklung und Deployment
+
+### Voraussetzungen
+
+- Node.js und npm für CDK
+- AWS CLI mit Zugriff auf das Konto, Region eu-central-1
+- Python 3 (lokaler Testserver, optional `backend/.venv` mit boto3 für Skripte)
+- Git mit Push-Rechten auf `daviddimitrov/quarto`
+
+### Frontend lokal testen
+
+```sh
+cd frontend && python3 -m http.server 8000
+```
+
+Dann `http://localhost:8000` öffnen. Localhost hat eigene Cookies und eigenen `localStorage`, man loggt sich dort einmal separat ein. Der lokale Server spricht mit der echten API, Änderungen an Daten sind also echt.
+
+### Frontend deployen
+
+```sh
+cd frontend && ./bump.sh && git add index.html login.html && git commit -m "Bump cache version" && cd .. && git push
+```
+
+Der Push auf `main` startet den Workflow `.github/workflows/pages.yml`, aber nur bei Änderungen in `frontend/` oder am Workflow selbst. Er hat zwei Jobs: `build` lädt `frontend/` als Pages-Artefakt hoch, `deploy` veröffentlicht es. `concurrency` bricht ältere Läufe ab. Nach ein bis zwei Minuten ist die neue Version live.
+
+### Backend deployen
+
+```sh
+cd backend && JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1 npx cdk deploy
+```
+
+Bei IAM-Änderungen fragt CDK mit `y/n` nach. Die Ausgabe dabei nicht durch `grep` filtern, sonst sieht man die Frage nicht. Lambda-Code-Änderungen (`api.py`, `collect_today.py`) brauchen nur dieses Deployment, kein Frontend-Bump. Ein `cdk diff` zeigt manchmal Änderungen an der Lambda, nur weil `__pycache__` entstanden ist. Das ist harmlos.
+
+### Collector manuell auslösen
+
+Für alle Nutzer im Nachtmodus:
+
+```sh
+aws lambda invoke --function-name <CollectFn-Name> --region eu-central-1 /dev/stdout
+```
+
+Für den eigenen Nutzer ohne Nachtmodus geht `PATCH /user/{userId}/tasks/today` mit gültigem Token.
+
+### Logs
+
+CloudWatch Logs, je eine Log-Gruppe pro Lambda. Der Nachtlauf schreibt sein Ergebnis pro Nutzer als JSON ins Log.
+
+### Hinweise für zsh
+
+- URLs mit `;` oder `?` in Variablen oder Strings packen, sonst maskiert url-quote-magic die Zeichen.
+- `!` in doppelten Anführungszeichen löst History-Expansion aus. Für JMESPath-Abfragen einfache Anführungszeichen und Backticks nehmen.
+- Globs wie `--include=*.py` in Anführungszeichen setzen.
+
+## Kosten
+
+Bei einem Nutzer praktisch null:
+
+| Dienst | Nutzung | Kosten |
+|---|---|---|
+| DynamoDB On-Demand | einige tausend Zugriffe pro Monat | Cent-Bereich, Speicher im Free Tier |
+| Lambda ARM64 | wenige tausend Aufrufe | Free Tier |
+| API Gateway HTTP API | Polling alle 60 s bei geöffneter App | rund 1 $ pro Million Aufrufe, im Monat Cents |
+| Cognito | 1 aktiver Nutzer | Free Tier |
+| EventBridge | 30 Aufrufe im Monat | kostenlos |
+| GitHub Pages | statische Dateien | kostenlos |
+
+Das Budget von unter 1 € im Monat wird deutlich unterschritten.
+
+## Bekannte Grenzen und Ideen
+
+- **Kein Offline-Modus:** Ohne Netz zeigt die App den Cache, aber Aktionen schlagen fehl. Ein Service Worker mit Warteschlange wäre die Lösung.
+- **Kein Rückgängig:** Ein versehentlicher Haken lässt sich nicht zurücknehmen. Wiederkehrende Aufgaben muss man in Alle per Bearbeiten zurückdatieren, die gezählten Minuten bleiben.
+- **Fortschritt nur privat:** Arbeit hat kein Budget und daher keinen Balken.
+- **Zeitzone fest:** Backend und Collector rechnen in Europe/Berlin, der Nachtlauf in UTC. Die Uhrzeit verschiebt sich daher mit der Sommerzeit um eine Stunde.
+- **Polling statt Push:** genügt für einen Nutzer mit zwei Geräten. WebSockets würden mehr kosten als sie bringen.
+- **Stack-Name:** `ElevenMinutesStack` bleibt aus historischen Gründen.

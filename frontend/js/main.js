@@ -428,6 +428,7 @@ function runTaskAction(action, taskIds) {
     const config = TASK_ACTIONS[action];
     if (!config || taskIds.length === 0) return;
     taskIds = taskIds.map(String);
+    if (action === 'done') countDoneLocally(taskIds);
 
     // In Heute und Arbeit verschwindet ein Task bei jeder Aktion, in Alle nur beim Löschen
     if (isDayView(currentView) || action === 'delete') {
@@ -744,26 +745,35 @@ function loadBudget() {
 
 function renderBudget() {
     const p = readRaw(profileKey());
-    const items = readRaw(`quarto_today_privat_${$.cookie('user_id')}`) || [];
-    const used = items.reduce((sum, t) => sum + (Number(t.duration) || 0), 0);
+    const open = (readRaw(`quarto_today_privat_${$.cookie('user_id')}`) || [])
+        .filter(t => Number(t.duration) > 0);
+    const done = Number(p && p.doneToday) || 0;
     if (!p || p.budgetToday == null) {
-        $('#budget-line, #side-budget-value').text(`${used} min`);
+        $('#budget-line, #side-budget-value').text(`${done} min`);
         return;
     }
     const budget = Number(p.budgetToday) || 0;
     const daily = Number(p.dailyLimit) || budget;
     const carry = Math.max(0, budget - daily);
-    const text = `${used} / ${budget} min` + (carry ? ` · +${carry} Übertrag` : '');
-    $('#budget-line').text(text);
-    $('#side-budget-value').text(`${used} / ${budget} min`);
+    $('#budget-line').text(`${done} / ${budget} min` + (carry ? ` · +${carry} Übertrag` : ''));
+    $('#side-budget-value').text(`${done} / ${budget} min`);
 
-    // Balken: grün bis zum Tageslimit, Übertrag heller dahinter
-    const base = Math.max(budget, used, 1);
-    const fill = Math.min(used, daily) / base * 100;
-    const carryFill = Math.max(0, Math.min(used, budget) - daily) / base * 100;
-    $('.bar .fill').css('width', fill + '%');
-    $('.bar .carry').css('width', carryFill + '%');
-    $('.bar').toggleClass('over', used > budget);
+    // Balken wächst mit erledigten Minuten, ist alles abgehakt, ist er voll
+    const pct = done > 0 && open.length === 0 ? 100 : Math.min(100, done / Math.max(budget, 1) * 100);
+    $('.bar .fill').css('width', pct + '%');
+    $('.bar .carry').css('width', '0%');
+}
+
+// Erledigte Minuten sofort zählen, der Server bestätigt beim nächsten Laden
+function countDoneLocally(taskIds) {
+    const p = readRaw(profileKey());
+    if (!p) return;
+    const minutes = taskIds.map(findTask)
+        .filter(t => t && !t.longTerm && (t.kontext || 'privat') === 'privat')
+        .reduce((sum, t) => sum + (Number(t.duration) || 0), 0);
+    if (!minutes) return;
+    p.doneToday = (Number(p.doneToday) || 0) + minutes;
+    try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch (e) {}
 }
 
 // ---------- Zähler in der Seitenleiste ----------

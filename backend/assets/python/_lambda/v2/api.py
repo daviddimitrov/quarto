@@ -247,10 +247,26 @@ def delete_task(p, body):
     return 200, {"message": "Task deleted successfully"}
 
 
+def count_done(user_id, item):
+    """Zählt erledigte private Minuten für den Fortschrittsbalken, pro Tag neu."""
+    minutes = int(item.get("duration") or 0)
+    if minutes <= 0 or item.get("kontext", "privat") != "privat" or item.get("long_term"):
+        return
+    prof = get_profile(user_id) or {}
+    day = today().isoformat()
+    done = int(prof.get("done_minutes", 0)) if prof.get("done_date") == day else 0
+    table.update_item(
+        Key={"PK": f"USER#{user_id}", "SK": "PROFILE"},
+        UpdateExpression="SET done_minutes = :m, done_date = :d",
+        ExpressionAttributeValues={":m": done + minutes, ":d": day},
+    )
+
+
 def set_done(p, body):
     item = get_item(p["userId"], p["taskId"])
     if item is None:
         return 404, {"message": "Task not found"}
+    count_done(p["userId"], item)
     nxt = None if item.get("spontan") else next_due(item, today())
     if nxt is None:
         table.delete_item(Key=key(p["userId"], p["taskId"]))
@@ -303,6 +319,7 @@ def get_profile_route(p, body):
         "dailyLimit": base,
         "maxLimit": maximum,
         "budgetToday": min(maximum, max(base, int(prof.get("budget", base)))),
+        "doneToday": int(prof.get("done_minutes", 0)) if prof.get("done_date") == today().isoformat() else 0,
     }
 
 

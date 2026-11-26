@@ -25,6 +25,31 @@ def kontext(t):
     return t.get("kontext", "privat")
 
 
+def interval_days(t):
+    """Rhythmus in Tagen: Zahl wie angegeben, Wochentag 7, Monatsregeln 30."""
+    regel = t.get("regel") or ""
+    if regel.startswith("woche:"):
+        return 7
+    if regel.startswith("mon"):
+        return 30
+    try:
+        days = int(t.get("rhythm") or 0)
+    except (TypeError, ValueError):
+        return None
+    return days if days > 0 else None
+
+
+def overdue_days(t, today_date):
+    return (today_date - datetime.fromisoformat(t["due_date"]).date()).days
+
+
+def is_starving(t, today_date):
+    """Hängt zu lange fest: überfällig um den eigenen Rhythmus, höchstens 7 Tage."""
+    days = interval_days(t)
+    limit = min(days, 7) if days else 7
+    return overdue_days(t, today_date) >= limit
+
+
 def collect_for_user(user_id, nightly):
     pk = f"USER#{user_id}"
     items = query_all(pk)
@@ -71,12 +96,24 @@ def collect_for_user(user_id, nightly):
     private.sort(key=lambda t: (
         int(t.get("priority") or NO_VALUE),
         t["due_date"],
-        int(t.get("rhythm") or NO_VALUE),
+        int(t.get("rhythm") or NO_VALUE) if str(t.get("rhythm") or "").isdigit() else NO_VALUE,
     ))
     chosen, total = set(), 0
+
+    # Erst was zu lange festhängt, am stärksten überfällige zuerst. Die erste
+    # davon kommt immer rein, damit große Aufgaben nicht ewig hinten runterfallen
+    starving = [t for t in private if is_starving(t, now.date())]
+    starving.sort(key=lambda t: -overdue_days(t, now.date()) / (interval_days(t) or 7))
+    for t in starving:
+        d = int(t.get("duration") or 0)
+        if not chosen or total + d <= budget:
+            total += d
+            chosen.add(t["SK"])
+
+    # Dann der Rest nach Priorität, kleine Aufgaben füllen übrige Minuten auf
     for t in private:
         d = int(t.get("duration") or 0)
-        if total + d <= budget:
+        if t["SK"] not in chosen and total + d <= budget:
             total += d
             chosen.add(t["SK"])
 
