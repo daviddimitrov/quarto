@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -51,6 +52,9 @@ def parse_rhythm(value):
     s = str(value).strip().lower()
     if s.isdigit():
         return int(s), None
+    m = re.fullmatch(r"(\d{1,2})\.", s)
+    if m and 1 <= int(m.group(1)) <= 31:
+        return None, f"monatstag:{int(m.group(1))}"
     if s[:2] in WEEKDAYS:
         return None, f"woche:{WEEKDAYS[s[:2]]}"
     if s in MONTH_END:
@@ -62,6 +66,8 @@ def rhythm_label(t):
     regel = t.get("regel")
     if regel and regel.startswith("woche:"):
         return WEEKDAY_NAMES[int(regel.split(":")[1])]
+    if regel and regel.startswith("monatstag:"):
+        return regel.split(":")[1] + "."
     if regel == "monat:letzter":
         return "eom"
     return t.get("rhythm")
@@ -79,6 +85,16 @@ def next_due(item, today_date):
     if regel and regel.startswith("woche:"):
         weekday = int(regel.split(":")[1])
         return base + timedelta(days=(weekday - base.weekday()) % 7 or 7)
+    if regel and regel.startswith("monatstag:"):
+        day = int(regel.split(":")[1])
+
+        def on_day(year, month):
+            return datetime(year, month, min(day, last_day(year, month).day)).date()
+
+        candidate = on_day(base.year, base.month)
+        if candidate > base:
+            return candidate
+        return on_day(base.year + (base.month == 12), base.month % 12 + 1)
     if regel == "monat:letzter":
         end = last_day(base.year, base.month)
         if base < end:
