@@ -580,6 +580,26 @@ function buildLongRow(item) {
     `;
 }
 
+// ---------- Sync zwischen Geräten ----------
+
+// Nicht neu zeichnen, während ein Menü offen ist, gezogen wird oder auf der Konto-Seite
+function safeRefresh() {
+    if (currentView === 'account') return;
+    if ($('.dropdown-menu.show').length || $('.sortable-chosen').length) return;
+    reloadCurrentView();
+}
+
+// Sofort neu laden, wenn das Fenster wieder in den Vordergrund kommt
+document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) safeRefresh();
+});
+window.addEventListener('focus', safeRefresh);
+
+// Leichtes Polling, solange das Fenster sichtbar ist
+setInterval(function () {
+    if (!document.hidden) safeRefresh();
+}, 60000);
+
 // ---------- Konto ----------
 
 $(document).on('click', '#account-link', function (event) {
