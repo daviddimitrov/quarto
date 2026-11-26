@@ -91,7 +91,7 @@
                         <tbody id="long-body"></tbody>
                     </table>
                     <form id="long-add" onsubmit="event.preventDefault(); if (window.longAdd) longAdd(event);" autocomplete="off">
-                        <input id="longInput" type="text" class="form-control" placeholder="Langfristig: Steuererklärung, Fahrrad reparieren" enterkeyhint="done">
+                        <div class="input-group"><input id="longInput" type="text" class="form-control" placeholder="Langfristig: Steuererklärung, Fahrrad reparieren" enterkeyhint="done"><span class="input-group-text bg-white"><a tabindex="0" role="button" class="info-badge ms-1" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="top" data-bs-html="true" data-bs-content="Mehrere To-dos mit Komma trennen.<br>Deadline mit <b>bis</b>: bis morgen, bis fr, bis 3.12., bis 3.12.2027<br>Ab zwei Tagen vorher wird sie rot."><i class="bi bi-info-circle"></i></a></span></div>
                     </form>
                 </div>
             </div>
@@ -154,8 +154,8 @@
                             <div class="row" style="padding-bottom: 20px;">
                                 <div class="col-sm-6">
                                     <div class="form-group">
-                                        <label for="inputFrequency">Rhythmus</label>
-                                        <input type="text" placeholder="7, do oder eom" autocapitalize="none" required class="form-control" id="inputFrequency">
+                                        <label for="inputFrequency">Rhythmus <a tabindex="0" role="button" class="info-badge ms-1" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="top" data-bs-html="true" data-bs-content="<b>7</b> = alle 7 Tage nach Erledigung<br><b>do</b> = jeden Donnerstag (mo, di, mi, do, fr, sa, so)<br><b>15.</b> = jeden Monat am 15.<br><b>eom</b> = letzter Tag im Monat<br><b>0</b> = einmalig"><i class="bi bi-info-circle"></i></a></label>
+                                        <input type="text" placeholder="7, do, 15. oder eom" autocapitalize="none" required class="form-control" id="inputFrequency">
                                     </div>
                                 </div>
                                 <div class="col-sm-6">
@@ -217,8 +217,8 @@
                             <div class="row" style="padding-bottom: 20px;">
                                 <div class="col-sm-6">
                                     <div class="form-group">
-                                        <label for="editInputFrequency">Rhythmus</label>
-                                        <input type="text" placeholder="7, do oder eom" autocapitalize="none" required class="form-control" id="editInputFrequency">
+                                        <label for="editInputFrequency">Rhythmus <a tabindex="0" role="button" class="info-badge ms-1" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="top" data-bs-html="true" data-bs-content="<b>7</b> = alle 7 Tage nach Erledigung<br><b>do</b> = jeden Donnerstag (mo, di, mi, do, fr, sa, so)<br><b>15.</b> = jeden Monat am 15.<br><b>eom</b> = letzter Tag im Monat<br><b>0</b> = einmalig"><i class="bi bi-info-circle"></i></a></label>
+                                        <input type="text" placeholder="7, do, 15. oder eom" autocapitalize="none" required class="form-control" id="editInputFrequency">
                                     </div>
                                 </div>
                                 <div class="col-sm-6">

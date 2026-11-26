@@ -109,3 +109,13 @@ button:hover{
     background-color: #40c351 !important;
     color: white !important;
 }
+
+.info-badge {
+    color: #6c757d;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.popover {
+    font-size: 0.85rem;
+}

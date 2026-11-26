@@ -875,3 +875,9 @@ function emptyForm() {
     $("#inputFrequency").val('');
     $("#inputDuration").val('');
 }
+
+// Info-Badges (Bootstrap-Popover) aktivieren
+$(function () {
+    if (!window.bootstrap) return;
+    document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => bootstrap.Popover.getOrCreateInstance(el));
+});
