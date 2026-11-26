@@ -13,7 +13,7 @@ PRIORITIES = {1: "ASAP", 2: "HIGH", 3: "MEDIUM", 4: "LOW"}
 FIELDS = {
     "name": "name", "duration": "duration", "dueDate": "due_date", "due_date": "due_date",
     "rhythm": "rhythm", "today": "today", "priority_level_id": "priority", "priority": "priority",
-    "ordnung": "ordnung", "spontan": "spontan", "longTerm": "long_term", "long_term": "long_term", "kontext": "kontext", "deadline": "deadline",
+    "ordnung": "ordnung", "spontan": "spontan", "longTerm": "long_term", "long_term": "long_term", "kontext": "kontext", "deadline": "deadline", "notiz": "notiz",
 }
 
 
@@ -142,6 +142,7 @@ def to_dto(t, user_id, profile):
         "longTerm": t.get("long_term", False),
         "kontext": t.get("kontext", "privat"),
         "deadline": t.get("deadline"),
+        "notiz": t.get("notiz"),
     }
 
 
