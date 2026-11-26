@@ -107,7 +107,10 @@
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="noteTaskId">
-                    <textarea id="noteText" class="form-control" rows="5" placeholder="Infos, Links, Notizen"></textarea>
+                    <label for="noteSubtasks" class="form-label small text-muted">Unteraufgaben, eine pro Zeile</label>
+                    <textarea id="noteSubtasks" class="form-control mb-3" rows="5"></textarea>
+                    <label for="noteText" class="form-label small text-muted">Notiz</label>
+                    <textarea id="noteText" class="form-control" rows="3" placeholder="Infos, Links"></textarea>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-sm btn-outline-success" data-bs-dismiss="modal"><i class="bi bi-x"></i></button>
@@ -149,6 +152,7 @@
                                         <label for="inputTask">Aufgabe</label>
                                         <input required type="text" class="form-control" id="inputTask" placeholder="Hamster waschen">
                             <textarea id="inputNote" class="form-control mt-2" rows="2" placeholder="Notiz (optional)"></textarea>
+                            <textarea id="inputSubtasks" class="form-control mt-2" rows="3" placeholder="Unteraufgaben, eine pro Zeile (optional)"></textarea>
                                     </div>
                                 </div>
                             </div>
@@ -213,6 +217,7 @@
                                         <label for="editInputTask">Aufgabe</label>
                                         <input required type="text" class="form-control" id="editInputTask">
                             <textarea id="editInputNote" class="form-control mt-2" rows="2" placeholder="Notiz (optional)"></textarea>
+                            <textarea id="editInputSubtasks" class="form-control mt-2" rows="3" placeholder="Unteraufgaben, eine pro Zeile (optional)"></textarea>
                                     </div>
                                 </div>
                             </div>

@@ -133,3 +133,12 @@ td.has-note {
 td.has-note.open .task-note {
     display: block;
 }
+
+.subtask-item {
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.subtask-item label {
+    cursor: pointer;
+}

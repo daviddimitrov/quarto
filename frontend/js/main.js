@@ -280,7 +280,7 @@ function buildRow(item, view) {
             btn('Nicht Heute', `runTaskAction('not-today', ['${item.id}'])`),
             btn('Morgen', `runTaskAction('tomorrow', ['${item.id}'])`),
             btn('Nächste Woche', `runTaskAction('next-week', ['${item.id}'])`),
-            btn('Notiz', `openNote('${item.id}')`),
+            btn('Details', `openNote('${item.id}')`),
         ]
         : [
             btn('Erledigt', `runTaskAction('done', ['${item.id}'])`),
@@ -355,6 +355,8 @@ function startTaskDelete(taskIds) {
     $('#deleteTaskModal').modal('show');
 }
 
+let editingSubtasks = [];
+
 function taskEdit(taskId) {
     $.ajax({
         url: apiPrefix + `user/${$.cookie('user_id')}/task/${taskId}`,
@@ -364,6 +366,8 @@ function taskEdit(taskId) {
             $('#editTaskId').val(item.id);
             $('#editInputTask').val(item.name);
             $('#editInputNote').val(item.notiz || '');
+            editingSubtasks = item.subtasks || [];
+            $('#editInputSubtasks').val(editingSubtasks.map(s => s.name).join('\n'));
             $('#editSelectPriority').val(item.priorityLevel.id);
             $('#editPickDueDate').val(item.dueDate);
             $('#editInputFrequency').val(item.rhythm);
@@ -383,6 +387,7 @@ function saveTaskEdit() {
         priorityLevel: { id: kontextFor('all') === 'arbeit' ? null : parseInt($('#editSelectPriority').val()) },
         name: $('#editInputTask').val(),
         notiz: $('#editInputNote').val().trim(),
+        subtasks: linesToSubtasks($('#editInputSubtasks').val(), editingSubtasks),
         duration: kontextFor('all') === 'arbeit' ? null : parseInt($('#editInputDuration').val()),
         dueDate: $('#editPickDueDate').val(),
         rhythm: $('#editInputFrequency').val().trim(),
@@ -418,6 +423,7 @@ function addTask() {
         user_id: $.cookie('user_id'),
         name: name,
         notiz: $('#inputNote').val().trim(),
+        subtasks: linesToSubtasks($('#inputSubtasks').val(), []),
         duration: kontextFor('all') === 'arbeit' ? null : duration,
         dueDate: dueDate,
         rhythm: frequency,
@@ -576,7 +582,7 @@ function buildLongRow(item) {
                     <div class="dropdown-menu dropdown-menu-end">
                         ${btn('Heute', `runTaskAction('to-today', ['${item.id}'])`)}
                         ${btn('Erledigt', `runTaskAction('done', ['${item.id}'])`)}
-                        ${btn('Notiz', `openNote('${item.id}')`)}
+                        ${btn('Details', `openNote('${item.id}')`)}
                         ${btn('Löschen', `startTaskDelete(['${item.id}'])`)}
                     </div>
                 </div>
@@ -611,17 +617,85 @@ function linkify(text) {
     return text.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
 }
 
+// Aufgeklappte Tasks bleiben auch nach dem Neuzeichnen offen
+const openTasks = new Set();
+
 function nameCell(item, cls = '') {
-    if (!item.notiz) return `<td class="${cls}">${escapeHtml(item.name)}</td>`;
-    return `<td class="${cls} has-note">${escapeHtml(item.name)} <i class="bi bi-journal-text text-muted small"></i>`
-        + `<div class="task-note small text-muted mt-1">${linkify(escapeHtml(item.notiz))}</div></td>`;
+    const subs = item.subtasks || [];
+    if (!item.notiz && !subs.length) return `<td class="${cls}">${escapeHtml(item.name)}</td>`;
+    const done = subs.filter(s => s.done).length;
+    const badges = (subs.length ? ` <span class="text-muted small">${done}/${subs.length}</span>` : '')
+        + (item.notiz ? ' <i class="bi bi-journal-text text-muted small"></i>' : '');
+    const checklist = subs.map(s =>
+        `<div class="form-check subtask-item">`
+        + `<input class="form-check-input subtask-check" type="checkbox" id="sub-${item.id}-${s.id}" data-task="${item.id}" data-sub="${s.id}"${s.done ? ' checked' : ''}>`
+        + `<label class="form-check-label${s.done ? ' text-decoration-line-through text-muted' : ''}" for="sub-${item.id}-${s.id}">${escapeHtml(s.name)}</label>`
+        + `</div>`).join('');
+    const note = item.notiz ? `<div class="small text-muted mt-1">${linkify(escapeHtml(item.notiz))}</div>` : '';
+    const open = openTasks.has(String(item.id)) ? ' open' : '';
+    return `<td class="${cls} has-note${open}">${escapeHtml(item.name)}${badges}<div class="task-note mt-1">${checklist}${note}</div></td>`;
 }
 
-// Tippen auf den Namen klappt die Notiz auf und zu, Links bleiben klickbar
+// Tippen auf den Namen klappt auf und zu, Links und Checkboxen bleiben bedienbar
 $(document).on('click', 'td.has-note', function (event) {
-    if ($(event.target).closest('a').length) return;
+    if ($(event.target).closest('a, .subtask-item').length) return;
+    const id = $(this).closest('tr').attr('data-id');
     $(this).toggleClass('open');
+    if ($(this).hasClass('open')) openTasks.add(id); else openTasks.delete(id);
 });
+
+function rerenderLists() {
+    renderTable(readCache(currentView) || [], currentView);
+    if (isDayView(currentView)) renderLong(readCache('long') || []);
+}
+
+function updateCachedTask(id, change) {
+    let updated = null;
+    [currentView, 'long', 'all'].forEach(key => {
+        const items = readCache(key);
+        if (!items) return;
+        items.forEach(t => {
+            if (String(t.id) === String(id)) {
+                change(t);
+                updated = t;
+            }
+        });
+        writeCache(key, items);
+    });
+    return updated;
+}
+
+function putTask(id, body) {
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/task/${id}`,
+        method: 'PUT',
+        contentType: 'application/json',
+        data: JSON.stringify(body),
+        error: function () {
+            alert('Änderung konnte nicht gespeichert werden.');
+            reloadCurrentView();
+        }
+    });
+}
+
+// Häkchen bei einer Unteraufgabe
+$(document).on('change', '.subtask-check', function () {
+    const taskId = this.getAttribute('data-task');
+    const subId = this.getAttribute('data-sub');
+    const checked = this.checked;
+    const task = updateCachedTask(taskId, t => {
+        t.subtasks = (t.subtasks || []).map(s => String(s.id) === subId ? { ...s, done: checked } : s);
+    });
+    rerenderLists();
+    if (task) putTask(taskId, { subtasks: task.subtasks });
+});
+
+// Eine Zeile pro Unteraufgabe, unveränderte Zeilen behalten ihr Häkchen
+function linesToSubtasks(text, old) {
+    const byName = new Map((old || []).map(s => [s.name, s]));
+    return text.split('\n').map(l => l.trim()).filter(Boolean).map(name =>
+        byName.get(name) || { id: Math.random().toString(16).slice(2, 10), name: name, done: false });
+}
 
 function findTask(id) {
     for (const key of [currentView, 'long', 'all']) {
@@ -634,7 +708,8 @@ function findTask(id) {
 function openNote(id) {
     const task = findTask(id);
     $('#noteTaskId').val(id);
-    $('#noteModalTitle').text(task ? task.name : 'Notiz');
+    $('#noteModalTitle').text(task ? task.name : 'Details');
+    $('#noteSubtasks').val(task ? (task.subtasks || []).map(s => s.name).join('\n') : '');
     $('#noteText').val(task && task.notiz ? task.notiz : '');
     $('#noteModal').modal('show');
 }
@@ -642,26 +717,15 @@ function openNote(id) {
 function saveNote() {
     const id = $('#noteTaskId').val();
     const notiz = $('#noteText').val().trim();
-    [currentView, 'long'].forEach(key => {
-        const items = readCache(key);
-        if (!items) return;
-        items.forEach(t => { if (String(t.id) === id) t.notiz = notiz || null; });
-        writeCache(key, items);
+    const old = (findTask(id) || {}).subtasks;
+    const subtasks = linesToSubtasks($('#noteSubtasks').val(), old);
+    updateCachedTask(id, t => {
+        t.notiz = notiz || null;
+        t.subtasks = subtasks;
     });
     $('#noteModal').modal('hide');
-    renderTable(readCache(currentView) || [], currentView);
-    if (isDayView(currentView)) renderLong(readCache('long') || []);
-
-    $.ajax({
-        url: apiPrefix + `user/${$.cookie('user_id')}/task/${id}`,
-        method: 'PUT',
-        contentType: 'application/json',
-        data: JSON.stringify({ notiz: notiz }),
-        error: function () {
-            alert('Notiz konnte nicht gespeichert werden.');
-            reloadCurrentView();
-        }
-    });
+    rerenderLists();
+    putTask(id, { notiz: notiz, subtasks: subtasks });
 }
 
 // ---------- Konto ----------
@@ -935,6 +999,7 @@ function getRelativeDate(dateStr) {
 function emptyForm() {
     $("#inputTask").val('');
     $("#inputNote").val('');
+    $("#inputSubtasks").val('');
     $("#selectPriority").val('4');
     $("#pickDueDate").val('');
     $("#inputFrequency").val('');
