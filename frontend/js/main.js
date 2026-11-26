@@ -811,7 +811,8 @@ function rerenderLists() {
 
 function updateCachedTask(id, change) {
     let updated = null;
-    [currentView, 'long', 'all'].forEach(key => {
+    // Jede Liste nur einmal, sonst kippt ein Umschalter in Alle zweimal zurück
+    [...new Set([currentView, 'long', 'all'])].forEach(key => {
         const items = readCache(key);
         if (!items) return;
         items.forEach(t => {
@@ -841,8 +842,10 @@ function putTask(id, body) {
 function toggleSubtask(button) {
     const taskId = button.getAttribute('data-task');
     const subId = button.getAttribute('data-sub');
+    const current = ((findTask(taskId) || {}).subtasks || []).find(s => String(s.id) === subId);
+    const done = !(current && current.done);
     const task = updateCachedTask(taskId, t => {
-        t.subtasks = (t.subtasks || []).map(s => String(s.id) === subId ? { ...s, done: !s.done } : s);
+        t.subtasks = (t.subtasks || []).map(s => String(s.id) === subId ? { ...s, done: done } : s);
     });
     rerenderLists();
     if (task) putTask(taskId, { subtasks: task.subtasks });
@@ -904,11 +907,61 @@ function loadAccount() {
             $('#dailyLimit').val(p.dailyLimit);
             $('#maxLimit').val(p.maxLimit);
             $('#budgetToday').text(p.budgetToday);
+            loadDemand();
         },
         error: function () {
             showAccountMessage('Konto konnte nicht geladen werden.', false);
         }
     });
+}
+
+// ---------- Bedarf ----------
+
+// Rhythmus in Tagen: 7 -> 7, do -> 7, 15. und eom -> ein Monat, 0 oder leer -> einmalig
+function intervalDays(rhythm) {
+    const r = String(rhythm == null ? '' : rhythm).trim().toLowerCase();
+    if (/^\d+$/.test(r)) return Number(r) > 0 ? Number(r) : null;
+    if (/^\d{1,2}\.$/.test(r) || r === 'eom') return 30.44;
+    if (/^[a-zäöü]+$/.test(r) && WEEKDAY_SHORT[r.slice(0, 2)] !== undefined) return 7;
+    return null;
+}
+
+function formatMinutes(value) {
+    return value.toLocaleString('de-DE', { maximumFractionDigits: 1 });
+}
+
+function loadDemand() {
+    $.ajax({
+        url: apiPrefix + 'user/' + $.cookie('user_id') + '/tasks?kontext=privat',
+        method: 'GET',
+        dataType: 'json',
+        success: renderDemand,
+    });
+}
+
+function renderDemand(tasks) {
+    const items = (tasks || [])
+        .filter(t => !t.spontan && !t.longTerm && Number(t.duration) > 0)
+        .map(t => ({ task: t, days: intervalDays(t.rhythm) }))
+        .filter(x => x.days)
+        .map(x => ({ ...x, perDay: Number(x.task.duration) / x.days }))
+        .sort((a, b) => b.perDay - a.perDay);
+    const total = items.reduce((sum, x) => sum + x.perDay, 0);
+    const daily = parseInt($('#dailyLimit').val()) || 0;
+    const needed = Math.ceil(total);
+
+    $('#demand').prop('hidden', items.length === 0);
+    $('#demand-value').text(`${formatMinutes(total)} min/Tag · Limit ${daily}`).toggleClass('overdue', total > daily);
+    if (total > daily) {
+        $('#demand-hint').html(`Rückstand wächst. Limit auf ${needed} erhöhen oder Rhythmen strecken. `
+            + `<button type="button" class="link-btn" id="demand-apply">Limit auf ${needed} setzen</button>`);
+    } else {
+        $('#demand-hint').text(`Passt. ${formatMinutes(daily - total)} min/Tag Luft für spontane Aufgaben und Rückstand.`);
+    }
+    $('#demand-list').html(items.slice(0, 8).map(x =>
+        `<div class="demand-row"><span class="name">${escapeHtml(x.task.name)}</span>`
+        + `<span class="mono muted">${x.task.duration}m / ${escapeHtml(x.task.rhythm)}</span>`
+        + `<span class="mono">${formatMinutes(x.perDay)}</span></div>`).join(''));
 }
 
 function saveAccount() {
@@ -925,6 +978,7 @@ function saveAccount() {
             try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch (e) {}
             $('#budgetToday').text(p.budgetToday);
             showAccountMessage('Gespeichert.', true);
+            loadDemand();
         },
         error: function (xhr) {
             showAccountMessage((xhr.responseJSON && xhr.responseJSON.message) || 'Speichern fehlgeschlagen.', false);
@@ -1098,6 +1152,12 @@ function initUi() {
         saveAccount();
     });
     $('#logoutButton').on('click', logout);
+    $(document).on('click', '#demand-apply', function () {
+        const value = Math.min(240, Number(this.textContent.replace(/\D/g, '')));
+        $('#dailyLimit').val(value);
+        if ((parseInt($('#maxLimit').val()) || 0) < value) $('#maxLimit').val(value);
+        saveAccount();
+    });
 
     // Zeilen: Häkchen, Menü, Unteraufgaben, Aufklappen
     $(document).on('click', '.row .check', function (event) {

@@ -110,6 +110,15 @@
                         <div class="with-unit"><input type="number" id="maxLimit" min="1" max="240" inputmode="numeric"><span class="mono muted">min</span></div>
                     </label>
                     <p class="muted small">Heutiges Budget: <span class="mono" id="budgetToday">–</span> min</p>
+                    <div class="demand" id="demand" hidden>
+                        <div class="demand-head">
+                            <span>Bedarf</span>
+                            <span class="mono" id="demand-value"></span>
+                            <button type="button" class="info-btn" data-info="Durchschnittliche Minuten pro Tag, die deine wiederkehrenden privaten Aufgaben brauchen: Dauer geteilt durch Rhythmus.<br>Liegt der Bedarf über dem Tageslimit, wächst der Rückstand." aria-label="Hilfe"><i class="bi bi-info-circle"></i></button>
+                        </div>
+                        <div class="muted small" id="demand-hint"></div>
+                        <div class="demand-list" id="demand-list"></div>
+                    </div>
                     <div id="accountMessage" class="small"></div>
                     <div class="actions">
                         <button type="submit" class="btn primary">Speichern</button>

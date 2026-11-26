@@ -605,6 +605,38 @@ kbd {
 #accountMessage.ok { color: var(--accent); }
 #accountMessage.error { color: var(--danger); }
 
+/* Bedarf */
+.demand {
+    margin: 4px 0 18px;
+    padding: 14px;
+    background: var(--panel);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+}
+
+.demand-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 500;
+    margin-bottom: 6px;
+}
+
+#demand-hint { line-height: 1.5; margin-bottom: 10px; }
+
+.link-btn { color: var(--accent); font-size: 12px; }
+.link-btn:hover { text-decoration: underline; }
+
+.demand-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 34px;
+    border-top: 1px solid var(--border-soft);
+}
+
+.demand-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; font-size: 13px; }
+
 /* ---------- Login ---------- */
 
 .login-page {
