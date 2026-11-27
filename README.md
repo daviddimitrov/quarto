@@ -422,6 +422,15 @@ Jede Aufgabe ist eine Zeile mit Kästchen, Name, Infos rechts und „⋯“-Men�
   - Alle: Bearbeiten, Morgen, Nächste Woche, Löschen
   - Evergreens: Heute, Umbenennen, Löschen
 
+### Rückgängig
+
+Erledigt, Nicht heute, Morgen, Nächste Woche und Auf heute wirken sofort in der Oberfläche, gehen aber erst nach 5 Sekunden an den Server. So lange zeigt ein Hinweis unten die Aktion mit „Rückgängig“ und einem ablaufenden Balken, auf dem Mac geht auch `⌘Z`. Rückgängig stellt den gespeicherten Stand von Listen und Profil wieder her, ohne dass der Server je etwas davon mitbekommt.
+
+- Eine neue Aktion schickt eine noch offene sofort ab, es gibt immer nur eine Aktion zum Zurücknehmen.
+- Wechselt die Ansicht oder geht die App in den Hintergrund, wird die offene Aktion sofort gesendet. Beim Schließen läuft das über `fetch` mit `keepalive`, damit der Request das Schließen überlebt.
+- Solange eine Aktion offen ist, pausiert der Sync, sonst käme die Aufgabe vom Server kurz zurück.
+- Löschen hat schon eine Rückfrage und geht sofort raus.
+
 ### Drag & Drop
 
 SortableJS auf beiden Listen derselben Gruppe. Auf dem iPhone startet das Ziehen nach 220 ms Gedrückthalten, auf dem Mac sofort. Kästchen, Menü, Unteraufgaben und Links starten kein Ziehen.
@@ -457,6 +466,7 @@ Beim Bearbeiten der Unteraufgaben als Text behalten unveränderte Zeilen ihr Hä
 | Taste | Wirkung |
 |---|---|
 | `N` oder `L` | in Heute/Arbeit ins Einmalig-Feld, in Alle (nur `N`) neue Aufgabe |
+| `⌘Z` | letzte Aktion rückgängig, solange der Hinweis sichtbar ist |
 | `Esc` | Menü und Popover schließen, Feld verlassen |
 
 Auf Touch-Geräten sind die Tastenhinweise ausgeblendet.
@@ -555,7 +565,6 @@ Das Budget von unter 1 € im Monat wird deutlich unterschritten.
 ## Bekannte Grenzen und Ideen
 
 - **Kein Offline-Modus:** Ohne Netz zeigt die App den Cache, aber Aktionen schlagen fehl. Ein Service Worker mit Warteschlange wäre die Lösung.
-- **Kein Rückgängig:** Ein versehentlicher Haken lässt sich nicht zurücknehmen. Wiederkehrende Aufgaben muss man in Alle per Bearbeiten zurückdatieren, die gezählten Minuten bleiben.
 - **Fortschritt nur privat:** Arbeit hat kein Budget und daher keinen Balken.
 - **Zeitzone fest:** Backend und Collector rechnen in Europe/Berlin, der Nachtlauf in UTC. Die Uhrzeit verschiebt sich daher mit der Sommerzeit um eine Stunde.
 - **Polling statt Push:** genügt für einen Nutzer mit zwei Geräten. WebSockets würden mehr kosten als sie bringen.

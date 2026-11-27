@@ -154,6 +154,7 @@ function kontextFor(view) {
 }
 
 function setAllKontext(kontext) {
+    commitPending();
     allKontext = kontext;
     try { localStorage.setItem('quarto_all_kontext', kontext); } catch (e) {}
     reloadCurrentView();
@@ -169,6 +170,7 @@ const VIEWS = {
 };
 
 function setView(view) {
+    commitPending();
     currentView = view;
     $('[data-view]').removeClass('active');
     $(`[data-view="${view}"]`).addClass('active');
@@ -264,6 +266,7 @@ function renderTable(items, view) {
     $list.empty();
     $list.toggleClass('all-view', view === 'all');
 
+    if (isDayView(view)) items = items.filter(t => !isPending(t.id));
     if (view === 'all') {
         if (allKontext === 'privat') renderEvergreens(items.filter(t => t.evergreen));
         items = items.filter(t => !t.evergreen);
@@ -443,13 +446,91 @@ function hidePop() {
 
 // ---------- Aktionen ----------
 
-// Führt eine Aktion für eine oder mehrere Tasks aus und lädt danach die aktuelle Ansicht neu
-function runTaskAction(action, taskIds) {
-    const config = TASK_ACTIONS[action];
-    if (!config || taskIds.length === 0) return;
-    taskIds = taskIds.map(String);
-    if (action === 'done') countDoneLocally(taskIds);
+// ---------- Rückgängig ----------
 
+// Aktionen außer Löschen gehen erst nach ein paar Sekunden an den Server, bis dahin lässt sich alles zurücknehmen
+const UNDO_MS = 5000;
+const UNDO_LABELS = {
+    'done': 'Erledigt',
+    'not-today': 'Nicht heute',
+    'to-today': 'Auf heute',
+    'tomorrow': 'Auf morgen',
+    'next-week': 'Nächste Woche',
+};
+let pending = null;
+
+function isPending(id) {
+    return !!pending && pending.ids.includes(String(id));
+}
+
+function snapshotCaches() {
+    const keys = [currentView, 'long', 'evergreen'].map(cacheKey).concat([profileKey()]);
+    return keys.map(k => [k, localStorage.getItem(k)]);
+}
+
+function restoreCaches(snapshot) {
+    snapshot.forEach(([k, v]) => {
+        try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {}
+    });
+}
+
+function showUndo(text) {
+    const $t = $('#undo');
+    $('#undo-text').text(text);
+    $t.prop('hidden', false).removeClass('run');
+    void $t[0].offsetWidth; // Animation des Balkens neu starten
+    $t.addClass('run');
+}
+
+function hideUndo() {
+    $('#undo').prop('hidden', true).removeClass('run');
+}
+
+function commitPending() {
+    if (!pending) return;
+    const p = pending;
+    pending = null;
+    clearTimeout(p.timer);
+    hideUndo();
+    sendTaskAction(p.action, p.ids);
+}
+
+function undoPending() {
+    if (!pending) return;
+    const p = pending;
+    pending = null;
+    clearTimeout(p.timer);
+    hideUndo();
+    restoreCaches(p.snapshot);
+    rerenderLists();
+    updateCounts();
+    if (currentView === 'today') renderBudget();
+}
+
+// Beim Verlassen der App sofort senden, keepalive überlebt das Schließen
+function flushPendingOnHide() {
+    if (!pending) return;
+    const p = pending;
+    pending = null;
+    clearTimeout(p.timer);
+    hideUndo();
+    const config = TASK_ACTIONS[p.action];
+    p.ids.forEach(id => {
+        try {
+            fetch(apiPrefix + config.path(id), {
+                method: config.method,
+                keepalive: true,
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('quarto_id_token') },
+            });
+        } catch (e) {
+            sendTaskAction(p.action, [id]);
+        }
+    });
+}
+
+// Ändert Cache und Oberfläche sofort
+function applyTaskAction(action, taskIds) {
+    if (action === 'done') countDoneLocally(taskIds);
     // In Heute und Arbeit verschwindet ein Task bei jeder Aktion, in Alle nur beim Löschen
     if (isDayView(currentView) || action === 'delete') {
         taskIds.forEach(id => $(`.row[data-id="${id}"]`).addClass('leaving').delay(180).queue(function () { $(this).remove(); }));
@@ -457,9 +538,12 @@ function runTaskAction(action, taskIds) {
             const remaining = (readCache(view) || []).filter(t => !taskIds.includes(String(t.id)));
             writeCache(view, remaining);
         });
-        if (currentView === 'today') setTimeout(renderBudget, 0);
     }
+    if (currentView === 'today') setTimeout(renderBudget, 0);
+}
 
+function sendTaskAction(action, taskIds) {
+    const config = TASK_ACTIONS[action];
     const requests = taskIds.map(id => $.ajax({
         url: apiPrefix + config.path(id),
         method: config.method,
@@ -474,6 +558,26 @@ function runTaskAction(action, taskIds) {
         }
         reloadCurrentView();
     });
+}
+
+// Führt eine Aktion aus: Löschen sofort (hat schon eine Rückfrage), alles andere mit Rückgängig
+function runTaskAction(action, taskIds) {
+    const config = TASK_ACTIONS[action];
+    if (!config || taskIds.length === 0) return;
+    taskIds = taskIds.map(String);
+
+    if (action === 'delete') {
+        applyTaskAction(action, taskIds);
+        sendTaskAction(action, taskIds);
+        return;
+    }
+
+    commitPending();
+    const task = findTask(taskIds[0]);
+    const snapshot = snapshotCaches();
+    applyTaskAction(action, taskIds);
+    pending = { action, ids: taskIds, snapshot, timer: setTimeout(commitPending, UNDO_MS) };
+    showUndo(`${UNDO_LABELS[action]}: ${task ? task.name : ''}`);
 }
 
 function completeTask(row) {
@@ -728,6 +832,7 @@ function loadLong() {
 }
 
 function renderLong(items) {
+    items = items.filter(t => !isPending(t.id));
     const $list = $('#long-list');
     $list.empty();
     $('#long-count').text(items.length || '');
@@ -810,15 +915,17 @@ function updateCounts() {
 
 // Nicht neu zeichnen, während ein Menü oder Dialog offen ist, gezogen oder getippt wird
 function safeRefresh() {
-    if (!isAppPage() || currentView === 'account') return;
+    if (!isAppPage() || currentView === 'account' || pending) return;
     if (!$('#row-menu').prop('hidden') || $('.sortable-chosen').length || $('dialog[open]').length) return;
     if ($(document.activeElement).is('#longInput, #evergreenInput') && document.activeElement.value) return;
     reloadCurrentView();
 }
 
 document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) safeRefresh();
+    if (document.hidden) flushPendingOnHide();
+    else safeRefresh();
 });
+window.addEventListener('pagehide', flushPendingOnHide);
 window.addEventListener('focus', safeRefresh);
 
 setInterval(function () {
@@ -1282,6 +1389,7 @@ function initUi() {
     });
 
     $('#addTaskButton').on('click', openNewTask);
+    $('#undo-btn').on('click', undoPending);
     $('#task-form').on('submit', function (event) {
         event.preventDefault();
         submitTaskForm();
@@ -1367,6 +1475,11 @@ function initUi() {
             closeMenu();
             hidePop();
             if (typing) event.target.blur();
+            return;
+        }
+        if (!typing && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && pending) {
+            event.preventDefault();
+            undoPending();
             return;
         }
         if (typing || event.metaKey || event.ctrlKey || event.altKey || $('dialog[open]').length) return;
