@@ -247,7 +247,7 @@ Single-Table-Design: Alle Daten eines Nutzers liegen unter einem Partition Key, 
 | `watched` | Bool | geschaut |
 | `added`, `checked` | String | hinzugefügt am, zuletzt bei TMDB abgefragt |
 
-Dazu `SK = MEDIA_NO#<movie|tv>-<tmdb-id>` für weggeklickte Vorschläge mit ihren `genre_ids` und `SK = MEDIA_SUGGEST` mit den zuletzt berechneten Vorschlägen als JSON und dem Datum `computed`.
+Dazu `SK = MEDIA_NO#<movie|tv>-<tmdb-id>` für weggeklickte Vorschläge mit ihren `genre_ids` und `SK = MEDIA_SUGGEST#v2` mit den zuletzt berechneten Vorschlägen als JSON und dem Datum `computed`.
 
 ### Push-Abo
 
@@ -475,16 +475,16 @@ Die Einstellungen gelten für alle Geräte, Push selbst wird pro Gerät aktivier
 Eigene Seite für Filme und Serien, die man sehen will. Sie ist bewusst getrennt von den Aufgaben: kein Budget, kein Collector.
 
 - **Hinzufügen:** Oben suchen, TMDB liefert Treffer mit Jahr und Typ. Ein Film wird direkt hinzugefügt. Bei einer Serie wählt man die Staffel, die nächste kommende ist vorausgewählt. Läuft die Serie noch, gibt es zusätzlich die nächste Staffel als „angekündigt“, auch wenn TMDB sie noch nicht kennt. Sie steht dann unter Termin offen, bis die Prüfung ein Datum findet.
-- **Release-Infos** (`media.py`): Bei Filmen zählen die deutschen Einträge von TMDB: regulärer Kinostart (Typ 3, nur ohne ihn der begrenzte Start Typ 2 wie Previews) und digitaler Start (Typ 4). Gibt es keinen deutschen Eintrag, ist der Termin offen. Das weltweite Datum wird bewusst nicht genommen, weil der Film hier dann noch gar nicht läuft. Läuft der Film schon bei einem Streamingdienst, steht der Dienst da, sonst „Kino ab …“. Bei Staffeln das Startdatum der Staffel und die Dienste der Serie in Deutschland. Das Datum ist meist der weltweite Start, deshalb steht bei kommenden Staffeln „voraussichtlich“. Die Streaming-Infos stammen bei TMDB von JustWatch und umfassen auch die Mediatheken von ARD, ZDF und Arte. Kauf und Leihe zählen nicht, Amazon-Channels wie „Apple TV Amazon Channel“ auch nicht, weil sie nur denselben Dienst über Amazon anbieten.
+- **Release-Infos** (`media.py`): Bei Filmen zählen die deutschen Einträge von TMDB: regulärer Kinostart (Typ 3, nur ohne ihn der begrenzte Start Typ 2 wie Previews) und digitaler Start (Typ 4). Gibt es keinen deutschen Eintrag, ist der Termin offen. Das weltweite Datum wird bewusst nicht genommen, weil der Film hier dann noch gar nicht läuft. Läuft der Film schon bei einem Streamingdienst, steht der Dienst da, sonst „Kino ab …“. Bei Staffeln das Startdatum der Staffel und die Dienste der Serie in Deutschland. Das Datum ist meist der weltweite Start, deshalb steht bei kommenden Staffeln „voraussichtlich“. Die Streaming-Infos stammen bei TMDB von JustWatch und umfassen auch die Mediatheken von ARD, ZDF und Arte. Kauf und Leihe zählen nicht, „with Ads“-Varianten werden mit dem Dienst zusammengefasst, Amazon-Channels wie „Apple TV Amazon Channel“ auch nicht, weil sie nur denselben Dienst über Amazon anbieten.
 - **Gruppen:** Jetzt verfügbar (erschienen, aber noch nicht geschaut), Demnächst (nach Datum), Termin offen, Geschaut (eingeklappt).
 - **Abhaken** markiert als geschaut, ein zweiter Tipp nimmt das zurück. Das x entfernt den Eintrag.
 - **Daten aktualisieren** fragt alle ungeschauten Einträge neu bei TMDB ab und zeigt, was sich geändert hat.
-- **Vorschläge** unten auf der Seite (`compute_suggestions`):
-  - Quellen: TMDB-Empfehlungen zu den 15 zuletzt hinzugefügten eigenen Titeln (je ein Punkt, bei geschauten zwei), die Trends der Woche (0,6) und kommende deutsche Kinostarts (0,5). Mehrfach empfohlene Titel sammeln Punkte.
-  - Was schon auf der Liste steht oder weggeklickt wurde, fällt raus. Je Genre, das in weggeklickten Vorschlägen vorkam, gibt es 0,3 Punkte Abzug.
-  - Von den besten 30 bleiben nur Titel, die in Deutschland bei einem Dienst laufen oder einen deutschen Kinostart haben, davon die ersten 10. Die TMDB-Abfragen laufen parallel, `ApiFn` hat dafür 25 Sekunden Zeit.
-  - Jede Karte nennt den Grund („Weil du Dune auf der Liste hast“, „Bald im Kino“, „Diese Woche im Trend“). „Hinzufügen“ übernimmt den Titel, bei Serien mit Staffelauswahl. „Nicht interessiert“ blendet ihn für immer aus.
-  - Berechnet wird höchstens einmal pro Woche, das Ergebnis liegt in `MEDIA_SUGGEST`. Der Pfeil neben der Überschrift rechnet sofort neu.
+- **Vorschläge** unten auf der Seite (`compute_suggestions`): nur was **diesen oder nächsten Monat** in Deutschland startet, sortiert nach dem, was zur eigenen Liste passt.
+  - Kandidaten: TMDB-Empfehlungen zu den 15 zuletzt hinzugefügten eigenen Titeln, deutsche Kinostarts und Streamingstarts im Zeitraum (`/discover`, je zwei Seiten), Serien mit Folgen im Zeitraum bei einem deutschen Dienst, dazu die Trends der Woche.
+  - Behalten wird, was im Zeitraum in Deutschland ins Kino kommt oder bei einem Dienst startet. Bei Serien muss eine Staffel im Zeitraum beginnen und die Serie bei einem deutschen Dienst laufen. Alte Serien wie Game of Thrones fallen damit raus, ebenso Serien, die nur bei einem US-Sender laufen.
+  - Punkte: Empfehlung zu einem eigenen Titel 1, zu einem geschauten 2, je Genre, das auf der eigenen Liste vorkommt, 0,2 (höchstens 0,6), Trend 0,4, Beliebtheit im Zeitraum bis 0,5. Je Genre aus weggeklickten Vorschlägen 0,3 Abzug. Was schon auf der Liste steht oder weggeklickt wurde, fällt raus.
+  - Jede Karte nennt den Grund („Weil du House of the Dragon auf der Liste hast“, „Neu im Dezember“). „Hinzufügen“ übernimmt den Titel, bei Serien mit Staffelauswahl. „Nicht interessiert“ blendet ihn für immer aus.
+  - Berechnet wird höchstens einmal pro Woche und freitags automatisch, das Ergebnis liegt unter `MEDIA_SUGGEST#v2`. Der Pfeil neben der Überschrift rechnet sofort neu. Die TMDB-Abfragen laufen parallel, `ApiFn` hat dafür 25 Sekunden Zeit.
 - **Automatische Prüfung** (`scheduled_handler`, täglich 9 Uhr):
   - Jeden Tag kommt eine Mitteilung für alles Ungeschaute, das heute erscheint, etwa „Heute neu: Severance Staffel 3 bei Apple TV“.
   - Freitags werden zusätzlich alle ungeschauten Einträge neu bei TMDB abgefragt. Hat sich ein Termin verschoben, ist ein angekündigter Termin dazugekommen oder läuft etwas jetzt bei einem Dienst, steht das mit in der Mitteilung („Neuer Termin: House of the Dragon Staffel 4 ab 14.6.“, „Jetzt verfügbar: … bei Netflix“). Danach werden die Vorschläge neu berechnet.
