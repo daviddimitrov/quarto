@@ -376,6 +376,7 @@ def quick_add(event):
         if other is not None:
             return 200, f"Meinst du {match['name']} oder {other['name']}? Sag es bitte genauer."
         set_done({"userId": user_id, "taskId": match["id"]}, {})
+        notify_others(user_id, {})
         remaining = [t for t in tasks if t["id"] != match["id"]]
         return 200, say_open(remaining, prefix=f"{match['name']} ist erledigt. ")
 
@@ -388,6 +389,7 @@ def quick_add(event):
         if any(t.get("today") == 1 and normalize(t["name"]) == normalize(match["name"]) for t in tasks):
             return 200, f"{match['name']} steht schon auf heute."
         create_task({}, {"user_id": user_id, "name": match["name"], "spontan": True, "kontext": "privat"})
+        notify_others(user_id, {})
         return 201, f"{match['name']} steht jetzt auf heute."
 
     # Sonst: einmalige Aufgabe
@@ -699,6 +701,15 @@ ROUTES = {
 }
 
 
+def notify_others(user_id, event):
+    headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
+    try:
+        push.notify_status(user_id, exclude_device=headers.get("x-quarto-device"))
+    except Exception as e:
+        # Eine fehlgeschlagene Mitteilung darf die eigentliche Aktion nie scheitern lassen
+        print(f"Push nach Änderung fehlgeschlagen: {e}")
+
+
 def lambda_handler(event, context):
     if event.get("routeKey") == "POST /quick":
         try:
@@ -722,7 +733,14 @@ def lambda_handler(event, context):
                 params["user_name"] = login
                 if isinstance(body, dict):
                     body["user_id"] = uid
+                # Ändert sich die Zahl offener Aufgaben von Heute, bekommen die anderen Geräte eine Mitteilung
+                watch = event["routeKey"].split(" ")[0] != "GET" and "/task" in event["routeKey"]
+                before = push.open_today_count(query_all(f"USER#{uid}")) if watch else None
                 status, payload = handler(params, body)
+                if watch and status < 300:
+                    after = push.open_today_count(query_all(f"USER#{uid}"))
+                    if after != before:
+                        notify_others(uid, event)
         except Exception as e:
             print(f"Error: {e}")
             status, payload = 500, {"message": "An error occurred", "error": str(e)}

@@ -72,6 +72,9 @@ $.ajaxSetup({
         const token = localStorage.getItem('quarto_id_token');
         if (token && settings.url.startsWith(apiPrefix)) {
             xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+            // Damit dieses Gerät keine Mitteilung über die eigene Änderung bekommt
+            const device = localStorage.getItem('quarto_device');
+            if (device) xhr.setRequestHeader('X-Quarto-Device', device);
         }
     }
 });
@@ -522,7 +525,10 @@ function flushPendingOnHide() {
             fetch(apiPrefix + config.path(id), {
                 method: config.method,
                 keepalive: true,
-                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('quarto_id_token') },
+                headers: {
+                    'Authorization': 'Bearer ' + localStorage.getItem('quarto_id_token'),
+                    ...(localStorage.getItem('quarto_device') ? { 'X-Quarto-Device': localStorage.getItem('quarto_device') } : {}),
+                },
             });
         } catch (e) {
             sendTaskAction(p.action, [id]);
@@ -925,6 +931,14 @@ function updateCounts() {
     const work = readRaw(`quarto_work_arbeit_${uid}`);
     $('#count-today').text(today && today.length ? today.length : '');
     $('#count-work').text(work && work.length ? work.length : '');
+    updateBadge(today ? today.length : null);
+}
+
+// Zahl am App-Icon: offene Aufgaben von Heute. iOS erlaubt das nur mit Mitteilungs-Erlaubnis
+function updateBadge(count) {
+    if (count == null || !('setAppBadge' in navigator)) return;
+    if ('Notification' in window && Notification.permission !== 'granted') return;
+    (count ? navigator.setAppBadge(count) : navigator.clearAppBadge()).catch(() => {});
 }
 
 // ---------- Sync zwischen Geräten ----------
@@ -1178,6 +1192,21 @@ async function currentSubscription() {
     return reg ? reg.pushManager.getSubscription() : null;
 }
 
+// Gerätekennung wie im Backend: erste 32 Zeichen des SHA-256 vom Push-Endpoint
+async function rememberDevice(sub) {
+    try {
+        if (!sub) { localStorage.removeItem('quarto_device'); return; }
+        const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sub.endpoint));
+        const hex = [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2, '0')).join('');
+        localStorage.setItem('quarto_device', hex.slice(0, 32));
+    } catch (e) {}
+}
+
+async function syncDevice() {
+    if (!pushSupported()) return;
+    try { await rememberDevice(await currentSubscription()); } catch (e) {}
+}
+
 async function renderPush(message) {
     const $s = $('#pushStatus');
     $('#pushEnable, #pushTest, #pushDisable').prop('hidden', true);
@@ -1207,6 +1236,7 @@ async function enablePush() {
         await navigator.serviceWorker.ready;
         const { publicKey } = await $.ajax({ url: apiPrefix + 'push/key', method: 'GET', dataType: 'json' });
         const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(publicKey) });
+        await rememberDevice(sub);
         await $.ajax({
             url: apiPrefix + `user/${$.cookie('user_id')}/push`,
             method: 'POST',
@@ -1231,6 +1261,7 @@ async function disablePush() {
         });
         await sub.unsubscribe();
     }
+    await rememberDevice(null);
     renderPush('Auf diesem Gerät aus.');
 }
 
@@ -1546,6 +1577,7 @@ function escapeHtml(text) {
 // ---------- Bedienung ----------
 
 function initUi() {
+    syncDevice();
     setLongCollapsed(localStorage.getItem('quarto_long_collapsed') === '1');
     updateCounts();
 

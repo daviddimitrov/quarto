@@ -127,7 +127,7 @@ export class ElevenMinutesStack extends cdk.Stack {
       corsPreflight: {
         allowOrigins: ['https://daviddimitrov.github.io', 'http://localhost:8000'],
         allowMethods: [apigw.CorsHttpMethod.ANY],
-        allowHeaders: ['Content-Type', 'Authorization'],
+        allowHeaders: ['Content-Type', 'Authorization', 'X-Quarto-Device'],
       },
     });
 
