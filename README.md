@@ -244,6 +244,8 @@ Single-Table-Design: Alle Daten eines Nutzers liegen unter einem Partition Key, 
 | `watched` | Bool | geschaut |
 | `added`, `checked` | String | hinzugefügt am, zuletzt bei TMDB abgefragt |
 
+Dazu `SK = MEDIA_NO#<movie|tv>-<tmdb-id>` für weggeklickte Vorschläge mit ihren `genre_ids` und `SK = MEDIA_SUGGEST` mit den zuletzt berechneten Vorschlägen als JSON und dem Datum `computed`.
+
 ### Push-Abo
 
 `PK = USER#<id>`, `SK = PUSH#<erste 32 Zeichen des SHA-256 vom Endpoint>`
@@ -294,6 +296,8 @@ Basis-URL: `https://vs7ubni3p3.execute-api.eu-central-1.amazonaws.com/`. Alle Ro
 | `PATCH /user/{userId}/media/{mediaId}/watched` | `media_watched` | geschaut umschalten |
 | `DELETE /user/{userId}/media/{mediaId}` | `media_delete` | entfernen |
 | `POST /user/{userId}/media/refresh` | `media_refresh` | alle ungeschauten Einträge neu bei TMDB abfragen |
+| `GET /user/{userId}/media/suggestions` | `media_suggestions` | Vorschläge, höchstens eine Woche alt, mit `?neu=1` frisch berechnet |
+| `POST /user/{userId}/media/dismiss` | `media_dismiss` | Vorschlag wegklicken, Body `{type, tmdbId, genreIds}` |
 | `GET /push/key` | `push_key` | öffentlicher VAPID-Schlüssel für das Abo im Browser |
 | `POST /user/{userId}/push` | `push_subscribe` | Push-Abo speichern, Body `{"subscription": …}` |
 | `DELETE /user/{userId}/push` | `push_unsubscribe` | Push-Abo löschen, Body `{"endpoint": …}` |
@@ -472,6 +476,12 @@ Eigene Seite für Filme und Serien, die man sehen will. Sie ist bewusst getrennt
 - **Gruppen:** Jetzt verfügbar (erschienen, aber noch nicht geschaut), Demnächst (nach Datum), Termin offen, Geschaut (eingeklappt).
 - **Abhaken** markiert als geschaut, ein zweiter Tipp nimmt das zurück. Das x entfernt den Eintrag.
 - **Daten aktualisieren** fragt alle ungeschauten Einträge neu bei TMDB ab und zeigt, was sich geändert hat.
+- **Vorschläge** unten auf der Seite (`compute_suggestions`):
+  - Quellen: TMDB-Empfehlungen zu den 15 zuletzt hinzugefügten eigenen Titeln (je ein Punkt, bei geschauten zwei), die Trends der Woche (0,6) und kommende deutsche Kinostarts (0,5). Mehrfach empfohlene Titel sammeln Punkte.
+  - Was schon auf der Liste steht oder weggeklickt wurde, fällt raus. Je Genre, das in weggeklickten Vorschlägen vorkam, gibt es 0,3 Punkte Abzug.
+  - Von den besten 30 bleiben nur Titel, die in Deutschland bei einem Dienst laufen oder einen deutschen Kinostart haben, davon die ersten 10. Die TMDB-Abfragen laufen parallel, `ApiFn` hat dafür 25 Sekunden Zeit.
+  - Jede Karte nennt den Grund („Weil du Dune auf der Liste hast“, „Bald im Kino“, „Diese Woche im Trend“). „Hinzufügen“ übernimmt den Titel, bei Serien mit Staffelauswahl. „Nicht interessiert“ blendet ihn für immer aus.
+  - Berechnet wird höchstens einmal pro Woche, das Ergebnis liegt in `MEDIA_SUGGEST`. Der Pfeil neben der Überschrift rechnet sofort neu.
 
 ### Fortschritt
 

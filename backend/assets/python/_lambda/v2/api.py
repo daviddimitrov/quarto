@@ -720,6 +720,17 @@ def media_delete(p, body):
     return 204, {}
 
 
+def media_suggestions(p, body):
+    return 200, media.suggestions(p["userId"], force=p.get("neu") == "1")
+
+
+def media_dismiss(p, body):
+    if body.get("type") not in ("movie", "tv") or not body.get("tmdbId"):
+        return 400, {"message": "type und tmdbId nötig"}
+    media.dismiss(p["userId"], body["type"], body["tmdbId"], body.get("genreIds"))
+    return 201, {"ok": True}
+
+
 def media_refresh(p, body):
     return 200, {"changes": media.refresh_user(p["userId"]), "items": media.list_media(p["userId"])}
 
@@ -742,6 +753,8 @@ ROUTES = {
     "PATCH /user/{userId}/media/{mediaId}/watched": media_watched,
     "DELETE /user/{userId}/media/{mediaId}": media_delete,
     "POST /user/{userId}/media/refresh": media_refresh,
+    "GET /user/{userId}/media/suggestions": media_suggestions,
+    "POST /user/{userId}/media/dismiss": media_dismiss,
     "GET /user/{userId}/tasks": list_tasks,
     "GET /user/{userId}/tasks/today": lambda p, b: list_tasks(p, b, mode="today"),
     "GET /user/{userId}/tasks/long": lambda p, b: list_tasks(p, b, mode="long"),

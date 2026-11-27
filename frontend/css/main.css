@@ -602,6 +602,28 @@ kbd {
 .media-delete { height: 36px; }
 #mediaMessage { min-height: 16px; margin-top: 8px; }
 
+.media-suggest { margin-top: 28px; }
+.suggest-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+
+.suggest-card {
+    display: flex;
+    gap: 12px;
+    padding: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+}
+
+.suggest-card img, .suggest-card .media-poster { width: 64px; height: 96px; border-radius: 6px; object-fit: cover; flex: none; }
+.suggest-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.suggest-reason { font-size: 12px; color: var(--muted); }
+.suggest-actions { display: flex; gap: 6px; margin-top: auto; padding-top: 6px; flex-wrap: wrap; }
+.suggest-actions .btn { height: 32px; padding: 0 10px; font-size: 12px; }
+
+@media (min-width: 900px) {
+    .suggest-grid { grid-template-columns: 1fr 1fr; }
+}
+
 /* ---------- Menü und Popover ---------- */
 
 .menu {

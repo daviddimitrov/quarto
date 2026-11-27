@@ -239,3 +239,140 @@ def refresh_user(user_id):
             changes.append({"title": stored["title"], "season": stored.get("season"),
                             "before": before[0], "after": after[0], "providers": list(after[1])})
     return changes
+
+
+# ---------- Vorschläge ----------
+
+SUGGEST_SK = "MEDIA_SUGGEST"
+MAX_SOURCES = 15       # so viele eigene Titel fließen höchstens ein, die neuesten zuerst
+SUGGESTIONS = 10
+
+
+def dismissed(items):
+    return {i["SK"].removeprefix("MEDIA_NO#") for i in items if i["SK"].startswith("MEDIA_NO#")}
+
+
+def candidate_from(r, kind=None):
+    kind = kind or r.get("media_type")
+    date = r.get("release_date") if kind == "movie" else r.get("first_air_date")
+    return {"tmdbId": r["id"], "type": kind, "title": r.get("title") or r.get("name"),
+            "year": (date or "")[:4] or None, "poster": poster(r.get("poster_path")),
+            "genreIds": r.get("genre_ids") or []}
+
+
+def compute_suggestions(user_id):
+    """Empfehlungen zu den eigenen Titeln plus Trends und kommende Kinostarts, gefiltert auf das,
+    was in Deutschland läuft oder ins Kino kommt.
+
+    Punkte: jede Empfehlung zu einem eigenen Titel 1, zu einem geschauten 2, Trend der Woche 0,6,
+    bald im Kino 0,5. Je Genre, das in weggeklickten Vorschlägen vorkam, gibt es Abzug.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    items = query_all(f"USER#{user_id}")
+    own = [i for i in items if i["SK"].startswith("MEDIA#")]
+    have = {f"{i['kind']}-{int(i['tmdb_id'])}" for i in own}
+    no = dismissed(items)
+    no_genres = {}
+    for i in items:
+        if i["SK"].startswith("MEDIA_NO#"):
+            for g in i.get("genre_ids") or []:
+                no_genres[int(g)] = no_genres.get(int(g), 0) + 1
+
+    sources = sorted(own, key=lambda i: i.get("added", ""), reverse=True)[:MAX_SOURCES]
+    scores, reasons, cands = {}, {}, {}
+
+    def add(c, points, reason):
+        key = f"{c['type']}-{c['tmdbId']}"
+        if key in have or key in no or not c.get("title"):
+            return
+        cands.setdefault(key, c)
+        scores[key] = scores.get(key, 0) + points
+        reasons.setdefault(key, [])
+        if reason not in reasons[key]:
+            reasons[key].append(reason)
+
+    def recs(i):
+        try:
+            return i, tmdb(f"/{i['kind']}/{int(i['tmdb_id'])}/recommendations").get("results", [])[:10]
+        except Exception as e:
+            print(f"Empfehlungen {i['SK']}: {e}")
+            return i, []
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for i, results in pool.map(recs, sources):
+            for r in results:
+                add(candidate_from(r, i["kind"]), 2 if i.get("watched") else 1, i["title"])
+        try:
+            for r in tmdb("/trending/all/week").get("results", [])[:20]:
+                if r.get("media_type") in ("movie", "tv"):
+                    add(candidate_from(r), 0.6, "Trend")
+        except Exception as e:
+            print(f"Trends: {e}")
+        try:
+            for r in tmdb("/movie/upcoming", region="DE").get("results", [])[:15]:
+                add(candidate_from(r, "movie"), 0.5, "Kino")
+        except Exception as e:
+            print(f"Kinostarts: {e}")
+
+        for key, c in cands.items():
+            penalty = sum(no_genres.get(int(g), 0) for g in c["genreIds"]) * 0.3
+            scores[key] -= penalty
+
+        ranked = sorted(cands, key=lambda k: -scores[k])[:SUGGESTIONS * 3]
+
+        def details(key):
+            c = cands[key]
+            try:
+                return key, fetch_info(c["type"], c["tmdbId"])
+            except Exception as e:
+                print(f"Details {key}: {e}")
+                return key, None
+
+        result = []
+        for key, info in pool.map(details, ranked):
+            if info is None:
+                continue
+            # Nur was in Deutschland läuft oder einen deutschen Kinostart hat
+            if not info.get("providers") and not (info.get("where") == "kino" and info.get("releaseDate")):
+                continue
+            c = cands[key]
+            own_reasons = [r for r in reasons[key] if r not in ("Trend", "Kino")]
+            if own_reasons:
+                why = "Weil du " + " und ".join(own_reasons[:2]) + " auf der Liste hast"
+            elif "Kino" in reasons[key]:
+                why = "Bald im Kino"
+            else:
+                why = "Diese Woche im Trend"
+            result.append({**c, "poster": info.get("poster") or c["poster"], "providers": info.get("providers") or [],
+                           "releaseDate": info.get("releaseDate"), "where": info.get("where"),
+                           "estimated": bool(info.get("estimated")), "season": info.get("season"),
+                           "reason": why})
+            if len(result) >= SUGGESTIONS:
+                break
+
+    table.put_item(Item={"PK": f"USER#{user_id}", "SK": SUGGEST_SK, "computed": today(),
+                         "items": json.dumps(result)})
+    return result
+
+
+def suggestions(user_id, force=False):
+    """Vorschläge aus dem Speicher, höchstens eine Woche alt, sonst neu berechnet."""
+    cached = table.get_item(Key={"PK": f"USER#{user_id}", "SK": SUGGEST_SK}).get("Item")
+    if cached and not force:
+        age = (datetime.fromisoformat(today()) - datetime.fromisoformat(cached["computed"])).days
+        if age < 7:
+            items = query_all(f"USER#{user_id}")
+            have = {i["SK"].removeprefix("MEDIA#") for i in items if i["SK"].startswith("MEDIA#")}
+            no = dismissed(items)
+            # Inzwischen Hinzugefügtes oder Weggeklicktes fällt raus
+            return [s for s in json.loads(cached["items"])
+                    if f"{s['type']}-{s['tmdbId']}" not in no
+                    and not any(h == f"{s['type']}-{s['tmdbId']}" or h.startswith(f"{s['type']}-{s['tmdbId']}-")
+                                for h in have)]
+    return compute_suggestions(user_id)
+
+
+def dismiss(user_id, kind, tmdb_id, genre_ids):
+    table.put_item(Item={"PK": f"USER#{user_id}", "SK": f"MEDIA_NO#{kind}-{int(tmdb_id)}",
+                         "genre_ids": [int(g) for g in genre_ids or []], "added": today()})
