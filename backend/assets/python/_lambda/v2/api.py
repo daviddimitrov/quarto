@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from boto3.dynamodb.conditions import Attr
 
+import push
 from collect_today import NO_VALUE, collect_for_user, query_all, table
 
 PRIORITIES = {1: "ASAP", 2: "HIGH", 3: "MEDIUM", 4: "LOW"}
@@ -480,11 +481,45 @@ def user_from_token(event):
     return login, _LOGIN_CACHE[login]
 
 
+# ---------- Push ----------
+
+def push_key(p, body):
+    return 200, {"publicKey": push.vapid_keys()["publicKey"]}
+
+
+def push_subscribe(p, body):
+    sub = body.get("subscription") or {}
+    keys = sub.get("keys") or {}
+    if not sub.get("endpoint", "").startswith("https://") or not keys.get("p256dh") or not keys.get("auth"):
+        return 400, {"message": "Ungültiges Abo"}
+    push.save_subscription(p["userId"], sub)
+    return 201, {"ok": True}
+
+
+def push_unsubscribe(p, body):
+    if body.get("endpoint"):
+        push.delete_subscription(p["userId"], body["endpoint"])
+    return 200, {"ok": True}
+
+
+def push_test(p, body):
+    items = query_all(f"USER#{p['userId']}")
+    today_iso = today().isoformat()
+    message = push.morning_message(items, today_iso) or {
+        "title": "Quarto", "body": "Benachrichtigungen funktionieren. Heute steht nichts mit ASAP oder Deadline an.",
+        "url": push.APP_URL}
+    return 200, {"sent": push.send_to_user(p["userId"], message, items)}
+
+
 ROUTES = {
     "GET /user": list_users,
     "GET /user/{userId}/profile": get_profile_route,
     "PUT /user/{userId}/profile": put_profile_route,
     "POST /user/{userId}/quick-key": create_quick_key,
+    "GET /push/key": push_key,
+    "POST /user/{userId}/push": push_subscribe,
+    "DELETE /user/{userId}/push": push_unsubscribe,
+    "POST /user/{userId}/push/test": push_test,
     "GET /user/{userId}/tasks": list_tasks,
     "GET /user/{userId}/tasks/today": lambda p, b: list_tasks(p, b, mode="today"),
     "GET /user/{userId}/tasks/long": lambda p, b: list_tasks(p, b, mode="long"),

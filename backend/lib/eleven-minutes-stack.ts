@@ -8,6 +8,10 @@ import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as scheduler from 'aws-cdk-lib/aws-scheduler';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
+import { execSync } from 'child_process';
 
 export class ElevenMinutesStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -21,11 +25,40 @@ export class ElevenMinutesStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    // cryptography für Web Push, lokal per pip für ARM64 gebaut, ohne Docker
+    const cryptoLayer = new lambda.LayerVersion(this, 'CryptoLayer', {
+      compatibleRuntimes: [lambda.Runtime.PYTHON_3_13],
+      compatibleArchitectures: [lambda.Architecture.ARM_64],
+      code: lambda.Code.fromAsset('assets/python/layer', {
+        bundling: {
+          image: lambda.Runtime.PYTHON_3_13.bundlingImage,
+          command: ['bash', '-c', 'pip install -r requirements.txt -t /asset-output/python'],
+          local: {
+            tryBundle(outputDir: string) {
+              execSync(
+                'python3 -m pip install -q -r assets/python/layer/requirements.txt ' +
+                '--platform manylinux2014_aarch64 --only-binary=:all: --python-version 3.13 ' +
+                `--implementation cp -t "${outputDir}/python"`,
+                { stdio: 'inherit' },
+              );
+              return true;
+            },
+          },
+        },
+      }),
+    });
+
+    // VAPID-Schlüssel, einmalig von Hand angelegt (siehe README)
+    const vapid = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'Vapid', {
+      parameterName: '/quarto/vapid',
+    });
+
     const common = {
       runtime: lambda.Runtime.PYTHON_3_13,
       architecture: lambda.Architecture.ARM_64,
       code: lambda.Code.fromAsset('assets/python/_lambda/v2'),
-      environment: { TABLE_NAME: table.tableName },
+      environment: { TABLE_NAME: table.tableName, VAPID_PARAM: '/quarto/vapid' },
+      layers: [cryptoLayer],
     };
 
     const apiFn = new lambda.Function(this, 'ApiFn', {
@@ -42,8 +75,30 @@ export class ElevenMinutesStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(60),
     });
 
+    const pushFn = new lambda.Function(this, 'PushFn', {
+      ...common,
+      handler: 'push.lambda_handler',
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(60),
+    });
+
     table.grantReadWriteData(apiFn);
     table.grantReadWriteData(collectFn);
+    table.grantReadWriteData(pushFn);
+    vapid.grantRead(apiFn);
+    vapid.grantRead(pushFn);
+
+    // Morgennachricht 7:30 Uhr deutscher Zeit, Sommerzeit inklusive
+    const schedulerRole = new iam.Role(this, 'MorningPushRole', {
+      assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
+    });
+    pushFn.grantInvoke(schedulerRole);
+    new scheduler.CfnSchedule(this, 'MorningPush', {
+      scheduleExpression: 'cron(30 7 * * ? *)',
+      scheduleExpressionTimezone: 'Europe/Berlin',
+      flexibleTimeWindow: { mode: 'OFF' },
+      target: { arn: pushFn.functionArn, roleArn: schedulerRole.roleArn },
+    });
 
     const userPool = new cognito.UserPool(this, 'QuartoUsers', {
       userPoolName: 'quarto',
@@ -81,6 +136,9 @@ export class ElevenMinutesStack extends cdk.Stack {
       ['/user', [M.GET]],
       ['/user/{userId}/profile', [M.GET, M.PUT]],
       ['/user/{userId}/quick-key', [M.POST]],
+      ['/push/key', [M.GET]],
+      ['/user/{userId}/push', [M.POST, M.DELETE]],
+      ['/user/{userId}/push/test', [M.POST]],
       ['/user/{userId}/tasks', [M.GET]],
       ['/user/{userId}/tasks/today', [M.GET, M.PATCH]],
       ['/user/{userId}/tasks/long', [M.GET]],

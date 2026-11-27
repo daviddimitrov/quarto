@@ -47,12 +47,21 @@ Lambda ApiFn (api.py) ────────────► DynamoDB Tabelle �
 EventBridge, täglich 03:00 UTC            │
         │                                 │
         ▼                                 │
-Lambda CollectFn (collect_today.py) ──────┘
+Lambda CollectFn (collect_today.py) ──────┤
+                                          │
+EventBridge Scheduler, 7:30 Europe/Berlin │
+        │                                 │
+        ▼                                 │
+Lambda PushFn (push.py) ──────────────────┘
+        │
+        ▼
+Apple / Google Push-Dienst ──► Service Worker (sw.js) ──► Mitteilung
 ```
 
 - **Frontend:** statische Seite auf GitHub Pages, ohne Build-Schritt.
 - **Backend:** AWS CDK Stack in eu-central-1 mit HTTP API, zwei Python-Lambdas, einer DynamoDB-Tabelle und einem Cognito User Pool.
 - **Nachtlauf:** Der Collector stellt jede Nacht die Heute-Liste neu zusammen, berechnet das Budget und räumt die per Evergreen angelegten To-dos auf.
+- **Morgennachricht:** Um 7:30 Uhr schickt `push.py` per Web Push eine Mitteilung mit allen ASAP-Aufgaben und Deadlines des Tages.
 
 ## Repository
 
@@ -98,6 +107,9 @@ Beide Funktionen nutzen denselben Code-Ordner `assets/python/_lambda/v2`, Python
 |---|---|---|---|---|
 | ApiFn | `api.lambda_handler` | 512 MB | 10 s | alle API-Routen |
 | CollectFn | `collect_today.lambda_handler` | 256 MB | 60 s | Nachtlauf |
+| PushFn | `push.lambda_handler` | 256 MB | 60 s | Morgennachricht |
+
+Alle drei bekommen den Layer `CryptoLayer` mit der Bibliothek `cryptography` für Web Push (`assets/python/layer/requirements.txt`). CDK baut ihn beim Deploy lokal per `python3 -m pip install --platform manylinux2014_aarch64 --only-binary=:all:`, Docker ist dafür nicht nötig. Nur wenn das lokale pip scheitert, fällt CDK auf Docker zurück.
 
 `api.py` importiert `collect_for_user` aus `collect_today.py`, damit die API den Collector auch manuell auslösen kann.
 
@@ -111,6 +123,21 @@ Beide Funktionen nutzen denselben Code-Ordner `assets/python/_lambda/v2`, Python
 ### EventBridge
 
 Regel `NightlyCollect` mit `cron(0 3 * * ? *)`, also täglich 03:00 UTC. Das ist 04:00 Uhr deutscher Winterzeit und 05:00 Uhr Sommerzeit. Ziel ist `CollectFn` ohne Pfadparameter, also für alle Nutzer und im Nachtmodus.
+
+### EventBridge Scheduler
+
+Schedule `MorningPush` mit `cron(30 7 * * ? *)` in der Zeitzone `Europe/Berlin`, also immer 7:30 Uhr deutscher Zeit, auch über die Zeitumstellung hinweg. Ziel ist `PushFn`, der Scheduler ruft sie über die Rolle `MorningPushRole` auf.
+
+### SSM Parameter Store
+
+`/quarto/vapid` ist ein SecureString mit den VAPID-Schlüsseln für Web Push als JSON `{"publicKey", "privateKey"}`. Er wird nicht von CDK angelegt, sondern einmalig von Hand, damit der private Schlüssel nie im Repo oder im CloudFormation-Template landet:
+
+```sh
+aws ssm put-parameter --name /quarto/vapid --type SecureString --region eu-central-1 \
+  --value "$(npx -y web-push generate-vapid-keys --json)"
+```
+
+`ApiFn` und `PushFn` dürfen ihn lesen. Ein neuer Schlüssel macht alle bestehenden Abos ungültig, dann muss jedes Gerät Push neu aktivieren.
 
 ### Cognito
 
@@ -192,6 +219,18 @@ Single-Table-Design: Alle Daten eines Nutzers liegen unter einem Partition Key, 
 | `subtasks` | Liste | `[{id, name, done}]` |
 | `evergreen` | Bool | Vorlage für immer wieder anfallende Kleinigkeiten |
 
+### Push-Abo
+
+`PK = USER#<id>`, `SK = PUSH#<erste 32 Zeichen des SHA-256 vom Endpoint>`
+
+| Attribut | Typ | Bedeutung |
+|---|---|---|
+| `endpoint` | String | URL beim Push-Dienst des Geräts (Apple, Google, Mozilla) |
+| `keys` | Map | `p256dh` und `auth` des Browsers für die Verschlüsselung |
+| `created` | String | Zeitpunkt des Abos |
+
+Ein Eintrag pro Gerät. Antwortet der Push-Dienst mit 404 oder 410, ist das Abo abgelaufen und wird gelöscht.
+
 Leere Werte werden nicht gespeichert, das Attribut fehlt dann einfach.
 
 ### Rhythmus und Regeln
@@ -223,6 +262,10 @@ Basis-URL: `https://vs7ubni3p3.execute-api.eu-central-1.amazonaws.com/`. Alle Ro
 | `PUT /user/{userId}/profile` | `put_profile_route` | Limits und Urlaub setzen |
 | `POST /user/{userId}/quick-key` | `create_quick_key` | neuen Schlüssel für den Siri-Kurzbefehl erzeugen |
 | `POST /quick` | `quick_add` | Siri-Kurzbefehl, ohne Cognito, siehe unten |
+| `GET /push/key` | `push_key` | öffentlicher VAPID-Schlüssel für das Abo im Browser |
+| `POST /user/{userId}/push` | `push_subscribe` | Push-Abo speichern, Body `{"subscription": …}` |
+| `DELETE /user/{userId}/push` | `push_unsubscribe` | Push-Abo löschen, Body `{"endpoint": …}` |
+| `POST /user/{userId}/push/test` | `push_test` | sofort an alle Geräte senden: Morgennachricht oder ein Testtext |
 | `GET /user/{userId}/tasks?kontext=` | `list_tasks` | alle nicht langfristigen Aufgaben, nach Fälligkeit |
 | `GET /user/{userId}/tasks/today?kontext=` | `list_tasks` | Aufgaben mit `today = 1`, nach Ordnung |
 | `GET /user/{userId}/tasks/long?kontext=` | `list_tasks` | langfristige ohne `today`, nach Ordnung |
@@ -285,6 +328,14 @@ Ein PUT ändert nur die mitgeschickten Felder. Das Frontend schickt beim Abhaken
 
 Einrichtung in der Kurzbefehle-App: Kurzbefehl „Quarto“ mit den Aktionen *Nach Eingabe fragen* (Text), *Inhalte von URL abrufen* (POST auf `<ApiUrl>/quick`, Header `X-Quarto-Key`, JSON-Feld `text` = *Bereitgestellte Eingabe*) und *Ergebnis anzeigen*. Die Konto-Seite zeigt die Schritte samt URL beim Erzeugen des Schlüssels.
 
+### Web Push
+
+`push.py` kommt ohne Push-Bibliothek aus, nur mit `cryptography`:
+
+- **Verschlüsselung (RFC 8291, aes128gcm):** pro Nachricht ein neues P-256-Schlüsselpaar, ECDH mit dem Schlüssel des Browsers, HKDF mit dessen `auth`-Secret, AES-128-GCM. Der Body besteht aus Salt, Record-Größe, eigenem öffentlichem Schlüssel und Ciphertext.
+- **Anmeldung (RFC 8292, VAPID):** ein mit ES256 signiertes JWT mit `aud` = Origin des Push-Dienstes, `exp` = 12 Stunden, `sub` = Kontakt-Mail. Dazu der öffentliche Schlüssel im Header `Authorization: vapid t=…, k=…`.
+- **Versand** per `urllib` mit `TTL` 12 Stunden. Ein ausgeschaltetes Handy bekommt die Nachricht also noch bis zum Abend.
+
 ### Fehler
 
 404 bei unbekannter Route, Aufgabe oder Profil, 403 bei fremder Nutzer-ID, 500 mit Fehlertext bei Ausnahmen. Die Ausnahme landet zusätzlich in CloudWatch Logs.
@@ -344,6 +395,16 @@ Auf der Konto-Seite trägt man Urlaub von–bis ein. Er gilt für Privat und Arb
 - **Während des Urlaubs** setzt der Collector jede Nacht alle Aufgaben auf `today = 0`. Heute und Arbeit bleiben leer, Deadlines werden nicht hochgeholt, es gibt keinen Übertrag. Heute und Arbeit zeigen einen Hinweis mit dem Enddatum, schon vor dem Urlaub einen mit dem Zeitraum.
 - **In der ersten Nacht danach** rückt `shift_after_vacation` alles nach hinten, was bis zum letzten Urlaubstag fällig war. Intervall-Aufgaben rücken um die Urlaubstage, Wochentagsregeln um volle Wochen, damit der Wochentag stimmt. Monatsregeln bleiben und stehen danach höchstens einmal überfällig da. Deadlines einmaliger Aufgaben bleiben, das sind echte Termine. Danach wird der Urlaub aus dem Profil gelöscht.
 - **Früher zurück:** Enddatum auf gestern setzen, dann wird in der nächsten Nacht um die tatsächlichen Tage verschoben. Wird der Urlaub ganz gelöscht, wird nichts verschoben.
+
+### Morgennachricht
+
+Täglich 7:30 Uhr geht pro Nutzer eine Mitteilung an alle Geräte mit Push-Abo, aber nur wenn etwas ansteht:
+
+- **ASAP:** private Aufgaben mit Priorität ASAP, die heute auf der Liste stehen oder fällig sind
+- **Deadline heute:** einmalige Aufgaben mit Deadline heute
+- **Deadline verpasst:** einmalige Aufgaben mit Deadline in der Vergangenheit
+
+Steht nichts an oder ist Urlaub, kommt nichts. Ein Tipp auf die Mitteilung öffnet Quarto.
 
 ### Fortschritt
 
@@ -495,6 +556,14 @@ Beim Bearbeiten der Unteraufgaben als Text behalten unveränderte Zeilen ihr Hä
 
 Auf Touch-Geräten sind die Tastenhinweise ausgeblendet.
 
+### Service Worker und Manifest
+
+`manifest.json` macht Quarto zur installierbaren Web-App (`display: standalone`). Auf dem iPhone ist das Voraussetzung für Push: Mitteilungen gibt es nur für Apps auf dem Homescreen, nicht in Safari.
+
+`sw.js` ist nur für Push da und cacht nichts. Er zeigt eingehende Nachrichten als Mitteilung an und öffnet bei Tipp die App bzw. holt sie nach vorn.
+
+Auf der Konto-Seite schaltet „Morgen-Benachrichtigung“ Push pro Gerät ein und aus. Aktivieren fragt die Erlaubnis ab, registriert den Service Worker, abonniert beim Push-Dienst mit dem öffentlichen VAPID-Schlüssel und speichert das Abo. „Test senden“ schickt sofort an alle Geräte.
+
 ### Cache-Busting
 
 `main.js` und `main.css` werden mit `?v=<commit>` eingebunden. `bump.sh` setzt den Wert auf den aktuellen Commit-Hash, sodass Browser und PWA nach jedem Deployment die neuen Dateien laden statt alter Kopien.
@@ -503,6 +572,8 @@ Auf Touch-Geräten sind die Tastenhinweise ausgeblendet.
 
 - **iPhone:** Safari, Teilen, „Zum Home-Bildschirm“. Die Meta-Tags sorgen für Vollbild, dunkle Statusleiste und das Apple-Touch-Icon.
 - **Mac:** Safari, Ablage, „Zum Dock hinzufügen“.
+
+Homescreen- und Dock-Apps haben eigenen Speicher, getrennt von Safari. Nach dem Hinzufügen muss man sich dort einmal neu einloggen.
 
 Ein Widget gibt es bewusst nicht: Ohne Interaktion wäre es nutzlos.
 
@@ -581,7 +652,9 @@ Bei einem Nutzer praktisch null:
 | Lambda ARM64 | wenige tausend Aufrufe | Free Tier |
 | API Gateway HTTP API | Polling alle 60 s bei geöffneter App | rund 1 $ pro Million Aufrufe, im Monat Cents |
 | Cognito | 1 aktiver Nutzer | Free Tier |
-| EventBridge | 30 Aufrufe im Monat | kostenlos |
+| EventBridge und Scheduler | 60 Aufrufe im Monat | kostenlos |
+| SSM Parameter Store | ein Standard-Parameter | kostenlos |
+| Web Push | Apple und Google stellen kostenlos zu | kostenlos |
 | GitHub Pages | statische Dateien | kostenlos |
 
 Das Budget von unter 1 € im Monat wird deutlich unterschritten.

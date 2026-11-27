@@ -1062,6 +1062,7 @@ function loadAccount() {
             $('#vacationFrom').val(p.vacationFrom || '');
             $('#vacationTo').val(p.vacationTo || '');
             loadDemand();
+            renderPush();
         },
         error: function () {
             showAccountMessage('Konto konnte nicht geladen werden.', false);
@@ -1130,6 +1131,88 @@ function createQuickKey() {
             $('#quickKeyResult').prop('hidden', false);
         },
         error: function () { alert('Schlüssel konnte nicht erzeugt werden.'); },
+    });
+}
+
+// ---------- Push ----------
+
+function pushSupported() {
+    return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+}
+
+function urlB64ToUint8Array(text) {
+    const raw = atob((text + '='.repeat((4 - text.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+
+async function currentSubscription() {
+    const reg = await navigator.serviceWorker.getRegistration('./');
+    return reg ? reg.pushManager.getSubscription() : null;
+}
+
+async function renderPush(message) {
+    const $s = $('#pushStatus');
+    $('#pushEnable, #pushTest, #pushDisable').prop('hidden', true);
+    if (!pushSupported()) {
+        $s.text('Auf dem iPhone nur in der App vom Homescreen, nicht in Safari.');
+        return;
+    }
+    if (Notification.permission === 'denied') {
+        $s.text('Mitteilungen sind für Quarto blockiert. In den Einstellungen unter Mitteilungen wieder erlauben.');
+        return;
+    }
+    const sub = await currentSubscription();
+    $('#pushEnable').prop('hidden', !!sub);
+    $('#pushTest, #pushDisable').prop('hidden', !sub);
+    $s.text(message || (sub ? 'Aktiv auf diesem Gerät.' : 'Auf diesem Gerät aus.'));
+}
+
+async function enablePush() {
+    try {
+        // Muss als Erstes im Klick passieren, sonst blockiert iOS die Abfrage
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+            renderPush('Ohne Erlaubnis keine Benachrichtigung.');
+            return;
+        }
+        const reg = await navigator.serviceWorker.register('./sw.js');
+        await navigator.serviceWorker.ready;
+        const { publicKey } = await $.ajax({ url: apiPrefix + 'push/key', method: 'GET', dataType: 'json' });
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(publicKey) });
+        await $.ajax({
+            url: apiPrefix + `user/${$.cookie('user_id')}/push`,
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ subscription: sub.toJSON() }),
+        });
+        renderPush('Aktiv. Mit „Test senden“ kannst du es gleich ausprobieren.');
+    } catch (e) {
+        console.error(e);
+        renderPush('Aktivieren hat nicht geklappt.');
+    }
+}
+
+async function disablePush() {
+    const sub = await currentSubscription();
+    if (sub) {
+        $.ajax({
+            url: apiPrefix + `user/${$.cookie('user_id')}/push`,
+            method: 'DELETE',
+            contentType: 'application/json',
+            data: JSON.stringify({ endpoint: sub.endpoint }),
+        });
+        await sub.unsubscribe();
+    }
+    renderPush('Auf diesem Gerät aus.');
+}
+
+function testPush() {
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/push/test`,
+        method: 'POST',
+        dataType: 'json',
+        success: r => renderPush(r.sent ? `Gesendet an ${r.sent} Gerät${r.sent === 1 ? '' : 'e'}.` : 'Kein Gerät erreicht.'),
+        error: () => renderPush('Test fehlgeschlagen.'),
     });
 }
 
@@ -1438,6 +1521,9 @@ function initUi() {
     });
     $('#logoutButton').on('click', logout);
     $('#quickKeyButton').on('click', createQuickKey);
+    $('#pushEnable').on('click', enablePush);
+    $('#pushDisable').on('click', disablePush);
+    $('#pushTest').on('click', testPush);
     $('#quickKeyCopy').on('click', function () {
         const btn = this;
         navigator.clipboard.writeText($('#quickKey').text()).then(() => { btn.textContent = 'Kopiert'; });

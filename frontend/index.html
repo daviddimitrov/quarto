@@ -11,6 +11,7 @@
     <title>Quarto</title>
     <link rel="icon" type="image/x-icon" href="./assets/images/logo.ico?v=2">
     <link rel="apple-touch-icon" href="./assets/images/apple-touch-icon.png">
+    <link rel="manifest" href="./manifest.json">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
@@ -148,6 +149,17 @@
                         <button type="button" class="btn" id="logoutButton">Logout</button>
                     </div>
                 </form>
+
+                <div class="panel" id="push">
+                    <div class="demand-head"><i class="bi bi-bell"></i><span>Morgen-Benachrichtigung</span></div>
+                    <p class="muted small">Jeden Morgen um 7:30 Uhr, wenn etwas mit ASAP oder eine Deadline ansteht. Gilt pro Gerät.</p>
+                    <p class="small" id="pushStatus"></p>
+                    <div class="actions start">
+                        <button type="button" class="btn primary" id="pushEnable" hidden>Aktivieren</button>
+                        <button type="button" class="btn" id="pushTest" hidden>Test senden</button>
+                        <button type="button" class="btn" id="pushDisable" hidden>Deaktivieren</button>
+                    </div>
+                </div>
 
                 <div class="panel" id="siri">
                     <div class="demand-head"><i class="bi bi-mic"></i><span>Siri-Kurzbefehl</span></div>
