@@ -455,6 +455,7 @@ Liegt der Bedarf über dem Tageslimit, wächst der Rückstand zwangsläufig. Dan
 3. **Fällige private Aufgaben:** nicht spontan, nicht langfristig, mit `due_date <= heute`.
 4. **Auswahl privat**, in zwei Durchgängen:
    - **Festhängende zuerst:** Eine Aufgabe hängt fest, wenn sie um ihren eigenen Rhythmus überfällig ist, höchstens aber 7 Tage. Bei „alle 2 Tage“ reichen also 2 Tage, bei „alle 21 Tage“ 7 Tage. Sie werden nach relativem Rückstand sortiert (überfällige Tage geteilt durch Rhythmus). Die erste kommt immer rein, auch wenn sie allein das Budget füllt, die weiteren nur, wenn sie noch passen. Ohne diesen Durchgang kämen große Aufgaben mit niedriger Priorität nie dran, weil kleinere oder wichtigere fast immer vorher das Budget belegen.
+   - **Dauer 0:** Fällige Aufgaben mit Dauer 0 kommen immer auf Heute, auch wenn das Budget schon voll ist. Das ist für Dinge gedacht, die am Fälligkeitstag auf jeden Fall dran sein sollen, aber keine Zeit im Budget brauchen.
    - **Dann der Rest:** sortiert nach Priorität, Fälligkeit und Rhythmus (kurzer Rhythmus zuerst). Jede Aufgabe, die noch ins Budget passt, kommt rein. Danach wird weitergesucht, sodass kleine Aufgaben übrige Minuten auffüllen.
 5. **Urlaub:** Läuft ein Urlaub, bleibt die Auswahl für Privat, Arbeit und Deadlines leer.
 6. **Arbeit:** an Werktagen alle fälligen Arbeitsaufgaben, ohne Budget.

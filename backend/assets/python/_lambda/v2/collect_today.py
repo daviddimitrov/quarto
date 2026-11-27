@@ -143,14 +143,15 @@ def collect_for_user(user_id, nightly):
     starving.sort(key=lambda t: -overdue_days(t, now.date()) / (interval_days(t) or 7))
     for t in starving:
         d = int(t.get("duration") or 0)
-        if not chosen or total + d <= budget:
+        if not chosen or d == 0 or total + d <= budget:
             total += d
             chosen.add(t["SK"])
 
     # Dann der Rest nach Priorität, kleine Aufgaben füllen übrige Minuten auf
     for t in private:
         d = int(t.get("duration") or 0)
-        if t["SK"] not in chosen and total + d <= budget:
+        # Aufgaben mit Dauer 0 kommen immer mit, auch wenn das Budget schon voll ist
+        if t["SK"] not in chosen and (d == 0 or total + d <= budget):
             total += d
             chosen.add(t["SK"])
 
