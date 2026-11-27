@@ -162,19 +162,58 @@ def morning_message(items, today):
     return {"title": lines[0], "body": "\n".join(lines[1:]), "url": APP_URL}
 
 
+DEFAULT_NOTIFICATIONS = [
+    {"time": "07:30", "days": "taeglich", "kind": "morgen"},
+    {"time": "19:00", "days": "taeglich", "kind": "offen"},
+]
+DAYS = {"taeglich": range(7), "werktags": range(5), "wochenende": (5, 6)}
+KINDS = ("morgen", "offen")
+
+
+def notifications_of(profile):
+    return profile.get("notifications") or DEFAULT_NOTIFICATIONS
+
+
+def open_message(items):
+    """Offene private Aufgaben von heute. None, wenn alles erledigt ist."""
+    open_tasks = sorted([i for i in items if i["SK"].startswith("TASK#") and i.get("today") == 1
+                         and i.get("kontext", "privat") == "privat"],
+                        key=lambda t: (int(t.get("priority") or 99), t.get("ordnung", 0)))
+    if not open_tasks:
+        return None
+    minutes = sum(int(t.get("duration") or 0) for t in open_tasks)
+    count = "Noch eine Aufgabe" if len(open_tasks) == 1 else f"Noch {len(open_tasks)} Aufgaben"
+    title = count + (f" · {minutes} min" if minutes else "")
+    return {"title": title, "body": ", ".join(t["name"] for t in open_tasks), "url": APP_URL}
+
+
+def build_message(kind, items, today):
+    return open_message(items) if kind == "offen" else morning_message(items, today)
+
+
 def lambda_handler(event, context):
-    """Läuft täglich 7:30 Uhr deutscher Zeit (EventBridge Scheduler)."""
-    today = datetime.now(ZoneInfo("Europe/Berlin")).date().isoformat()
+    """Läuft alle 15 Minuten (EventBridge Scheduler, Europe/Berlin) und schickt,
+    was ein Nutzer für dieses Viertelstunden-Fenster eingestellt hat."""
+    now = datetime.now(ZoneInfo("Europe/Berlin"))
+    slot = f"{now.hour:02d}:{now.minute - now.minute % 15:02d}"
+    today = now.date().isoformat()
     profiles = table.scan(FilterExpression=Attr("SK").eq("PROFILE"))["Items"]
     results = {}
     for profile in profiles:
         user_id = profile["PK"].removeprefix("USER#")
+        due = [n for n in notifications_of(profile)
+               if n.get("time") == slot and now.weekday() in DAYS.get(n.get("days"), ())]
+        if not due:
+            continue
         if profile.get("vacation_from") and profile.get("vacation_to") \
                 and profile["vacation_from"] <= today <= profile["vacation_to"]:
             results[user_id] = "urlaub"
             continue
         items = query_all(profile["PK"])
-        message = morning_message(items, today)
-        results[user_id] = send_to_user(user_id, message, items) if message else "nichts"
-    print(json.dumps(results))
+        sent = []
+        for n in due:
+            message = build_message(n.get("kind"), items, today)
+            sent.append(send_to_user(user_id, message, items) if message else "nichts")
+        results[user_id] = sent
+    print(json.dumps({"slot": slot, **results}))
     return results

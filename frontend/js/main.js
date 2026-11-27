@@ -1063,6 +1063,8 @@ function loadAccount() {
             $('#vacationTo').val(p.vacationTo || '');
             loadDemand();
             renderPush();
+            renderNotifications(p.notifications);
+            $('#notifMessage').text('');
         },
         error: function () {
             showAccountMessage('Konto konnte nicht geladen werden.', false);
@@ -1213,6 +1215,48 @@ function testPush() {
         dataType: 'json',
         success: r => renderPush(r.sent ? `Gesendet an ${r.sent} Gerät${r.sent === 1 ? '' : 'e'}.` : 'Kein Gerät erreicht.'),
         error: () => renderPush('Test fehlgeschlagen.'),
+    });
+}
+
+// ---------- Benachrichtigungen ----------
+
+const NOTIF_DAYS = { taeglich: 'Täglich', werktags: 'Mo–Fr', wochenende: 'Sa–So' };
+const NOTIF_KINDS = { morgen: 'ASAP und Deadlines', offen: 'Was noch offen ist' };
+
+function notifRow(n) {
+    const options = (map, value) => Object.entries(map)
+        .map(([k, label]) => `<option value="${k}"${k === value ? ' selected' : ''}>${label}</option>`).join('');
+    return `<div class="notif-row">
+        <input type="time" step="900" class="notif-time" value="${n.time || '07:30'}">
+        <select class="notif-days">${options(NOTIF_DAYS, n.days || 'taeglich')}</select>
+        <select class="notif-kind">${options(NOTIF_KINDS, n.kind || 'morgen')}</select>
+        <button type="button" class="icon-btn small notif-remove" aria-label="Entfernen"><i class="bi bi-x-lg"></i></button>
+    </div>`;
+}
+
+function renderNotifications(list) {
+    $('#notif-list').html((list || []).map(notifRow).join('')
+        || '<p class="muted small">Keine Benachrichtigungen.</p>');
+}
+
+function saveNotifications() {
+    const notifications = $('#notif-list .notif-row').map(function () {
+        const [h, m] = ($(this).find('.notif-time').val() || '07:30').split(':').map(Number);
+        const time = `${String(h).padStart(2, '0')}:${String(m - m % 15).padStart(2, '0')}`;
+        return { time, days: $(this).find('.notif-days').val(), kind: $(this).find('.notif-kind').val() };
+    }).get();
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/notifications`,
+        method: 'PUT',
+        contentType: 'application/json',
+        dataType: 'json',
+        data: JSON.stringify({ notifications }),
+        success: r => {
+            renderNotifications(r.notifications);
+            $('#notifMessage').removeClass('error').addClass('ok').text('Gespeichert.');
+        },
+        error: xhr => $('#notifMessage').removeClass('ok').addClass('error')
+            .text((xhr.responseJSON && xhr.responseJSON.message) || 'Speichern fehlgeschlagen.'),
     });
 }
 
@@ -1525,6 +1569,12 @@ function initUi() {
     $('#pushEnable').on('click', enablePush);
     $('#pushDisable').on('click', disablePush);
     $('#pushTest').on('click', testPush);
+    $('#notifAdd').on('click', function () {
+        $('#notif-list > p').remove();
+        $('#notif-list').append(notifRow({ time: '19:00', days: 'taeglich', kind: 'offen' }));
+    });
+    $(document).on('click', '.notif-remove', function () { $(this).closest('.notif-row').remove(); });
+    $('#notifSave').on('click', saveNotifications);
     $('#quickKeyCopy').on('click', function () {
         const btn = this;
         navigator.clipboard.writeText($('#quickKey').text()).then(() => { btn.textContent = 'Kopiert'; });

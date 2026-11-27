@@ -529,6 +529,7 @@ def get_profile_route(p, body):
         "doneToday": int(prof.get("done_minutes", 0)) if prof.get("done_date") == today().isoformat() else 0,
         "vacationFrom": prof.get("vacation_from"),
         "vacationTo": prof.get("vacation_to"),
+        "notifications": push.notifications_of(prof),
     }
 
 
@@ -602,6 +603,30 @@ def push_unsubscribe(p, body):
     return 200, {"ok": True}
 
 
+def put_notifications(p, body):
+    """Benachrichtigungen pro Nutzer: Uhrzeit in 15-Minuten-Schritten, Tage, Inhalt."""
+    items = body.get("notifications")
+    if not isinstance(items, list) or len(items) > 10:
+        return 400, {"message": "Höchstens 10 Benachrichtigungen"}
+    clean = []
+    for n in items:
+        m = re.fullmatch(r"(\d{1,2}):(\d{2})", str(n.get("time") or ""))
+        if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+            return 400, {"message": "Uhrzeit im Format HH:MM"}
+        minute = int(m.group(2)) - int(m.group(2)) % 15
+        if n.get("days") not in push.DAYS or n.get("kind") not in push.KINDS:
+            return 400, {"message": "Unbekannte Tage oder unbekannter Inhalt"}
+        clean.append({"time": f"{int(m.group(1)):02d}:{minute:02d}", "days": n["days"], "kind": n["kind"]})
+    clean.sort(key=lambda n: n["time"])
+    table.update_item(
+        Key={"PK": f"USER#{p['userId']}", "SK": "PROFILE"},
+        UpdateExpression="SET notifications = :n",
+        ExpressionAttributeValues={":n": clean},
+        ConditionExpression="attribute_exists(PK)",
+    )
+    return 200, {"notifications": clean}
+
+
 def push_test(p, body):
     items = query_all(f"USER#{p['userId']}")
     today_iso = today().isoformat()
@@ -620,6 +645,7 @@ ROUTES = {
     "POST /user/{userId}/push": push_subscribe,
     "DELETE /user/{userId}/push": push_unsubscribe,
     "POST /user/{userId}/push/test": push_test,
+    "PUT /user/{userId}/notifications": put_notifications,
     "GET /user/{userId}/tasks": list_tasks,
     "GET /user/{userId}/tasks/today": lambda p, b: list_tasks(p, b, mode="today"),
     "GET /user/{userId}/tasks/long": lambda p, b: list_tasks(p, b, mode="long"),

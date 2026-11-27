@@ -88,13 +88,14 @@ export class ElevenMinutesStack extends cdk.Stack {
     vapid.grantRead(apiFn);
     vapid.grantRead(pushFn);
 
-    // Morgennachricht 7:30 Uhr deutscher Zeit, Sommerzeit inklusive
+    // Benachrichtigungen nach deutscher Zeit, Sommerzeit inklusive
     const schedulerRole = new iam.Role(this, 'MorningPushRole', {
       assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
     });
     pushFn.grantInvoke(schedulerRole);
     new scheduler.CfnSchedule(this, 'MorningPush', {
-      scheduleExpression: 'cron(30 7 * * ? *)',
+      // Alle 15 Minuten, push.py prüft die Uhrzeiten der Nutzer
+      scheduleExpression: 'cron(0/15 * * * ? *)',
       scheduleExpressionTimezone: 'Europe/Berlin',
       flexibleTimeWindow: { mode: 'OFF' },
       target: { arn: pushFn.functionArn, roleArn: schedulerRole.roleArn },
@@ -139,6 +140,7 @@ export class ElevenMinutesStack extends cdk.Stack {
       ['/push/key', [M.GET]],
       ['/user/{userId}/push', [M.POST, M.DELETE]],
       ['/user/{userId}/push/test', [M.POST]],
+      ['/user/{userId}/notifications', [M.PUT]],
       ['/user/{userId}/tasks', [M.GET]],
       ['/user/{userId}/tasks/today', [M.GET, M.PATCH]],
       ['/user/{userId}/tasks/long', [M.GET]],

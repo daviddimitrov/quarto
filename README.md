@@ -49,7 +49,7 @@ EventBridge, täglich 03:00 UTC            │
         ▼                                 │
 Lambda CollectFn (collect_today.py) ──────┤
                                           │
-EventBridge Scheduler, 7:30 Europe/Berlin │
+EventBridge Scheduler, alle 15 min       │
         │                                 │
         ▼                                 │
 Lambda PushFn (push.py) ──────────────────┘
@@ -61,7 +61,7 @@ Apple / Google Push-Dienst ──► Service Worker (sw.js) ──► Mitteilung
 - **Frontend:** statische Seite auf GitHub Pages, ohne Build-Schritt.
 - **Backend:** AWS CDK Stack in eu-central-1 mit HTTP API, zwei Python-Lambdas, einer DynamoDB-Tabelle und einem Cognito User Pool.
 - **Nachtlauf:** Der Collector stellt jede Nacht die Heute-Liste neu zusammen, berechnet das Budget und räumt die per Evergreen angelegten To-dos auf.
-- **Morgennachricht:** Um 7:30 Uhr schickt `push.py` per Web Push eine Mitteilung mit allen ASAP-Aufgaben und Deadlines des Tages.
+- **Benachrichtigungen:** `push.py` schickt zu den eingestellten Uhrzeiten per Web Push eine Mitteilung, morgens etwa mit ASAP-Aufgaben und Deadlines, abends mit dem, was noch offen ist.
 
 ## Repository
 
@@ -107,7 +107,7 @@ Beide Funktionen nutzen denselben Code-Ordner `assets/python/_lambda/v2`, Python
 |---|---|---|---|---|
 | ApiFn | `api.lambda_handler` | 512 MB | 10 s | alle API-Routen |
 | CollectFn | `collect_today.lambda_handler` | 256 MB | 60 s | Nachtlauf |
-| PushFn | `push.lambda_handler` | 256 MB | 60 s | Morgennachricht |
+| PushFn | `push.lambda_handler` | 256 MB | 60 s | Benachrichtigungen |
 
 Alle drei bekommen den Layer `CryptoLayer` mit der Bibliothek `cryptography` für Web Push (`assets/python/layer/requirements.txt`). CDK baut ihn beim Deploy lokal per `python3 -m pip install --platform manylinux2014_aarch64 --only-binary=:all:`, Docker ist dafür nicht nötig. Nur wenn das lokale pip scheitert, fällt CDK auf Docker zurück.
 
@@ -126,7 +126,7 @@ Regel `NightlyCollect` mit `cron(0 3 * * ? *)`, also täglich 03:00 UTC. Das ist
 
 ### EventBridge Scheduler
 
-Schedule `MorningPush` mit `cron(30 7 * * ? *)` in der Zeitzone `Europe/Berlin`, also immer 7:30 Uhr deutscher Zeit, auch über die Zeitumstellung hinweg. Ziel ist `PushFn`, der Scheduler ruft sie über die Rolle `MorningPushRole` auf.
+Schedule `MorningPush` (der Name stammt noch aus der Zeit mit nur einer Uhrzeit) mit `cron(0/15 * * * ? *)` in der Zeitzone `Europe/Berlin`. `push.py` prüft bei jedem Lauf, welche Nutzer für diese Viertelstunde eine Benachrichtigung eingestellt haben. Die Uhrzeiten gelten also immer in deutscher Zeit, auch über die Zeitumstellung hinweg. Ziel ist `PushFn`, der Scheduler ruft sie über die Rolle `MorningPushRole` auf.
 
 ### SSM Parameter Store
 
@@ -194,6 +194,7 @@ Single-Table-Design: Alle Daten eines Nutzers liegen unter einem Partition Key, 
 | `done_minutes` | Zahl | heute erledigte private Minuten |
 | `done_date` | String | Datum, zu dem `done_minutes` gehört, ISO `YYYY-MM-DD` |
 | `vacation_from`, `vacation_to` | String | geplanter Urlaub, beide Tage inklusive |
+| `notifications` | Liste | `[{time, days, kind}]`, siehe [Benachrichtigungen](#benachrichtigungen). Fehlt sie, gelten 7:30 ASAP und Deadlines und 19:00 Was noch offen ist |
 | `quick_key_hash` | String | SHA-256 des Schlüssels für den Siri-Kurzbefehl |
 
 ### Aufgabe
@@ -266,6 +267,7 @@ Basis-URL: `https://vs7ubni3p3.execute-api.eu-central-1.amazonaws.com/`. Alle Ro
 | `POST /user/{userId}/push` | `push_subscribe` | Push-Abo speichern, Body `{"subscription": …}` |
 | `DELETE /user/{userId}/push` | `push_unsubscribe` | Push-Abo löschen, Body `{"endpoint": …}` |
 | `POST /user/{userId}/push/test` | `push_test` | sofort an alle Geräte senden: Morgennachricht oder ein Testtext |
+| `PUT /user/{userId}/notifications` | `put_notifications` | Benachrichtigungen speichern, Body `{"notifications": [...]}` |
 | `GET /user/{userId}/tasks?kontext=` | `list_tasks` | alle nicht langfristigen Aufgaben, nach Fälligkeit |
 | `GET /user/{userId}/tasks/today?kontext=` | `list_tasks` | Aufgaben mit `today = 1`, nach Ordnung |
 | `GET /user/{userId}/tasks/long?kontext=` | `list_tasks` | langfristige ohne `today`, nach Ordnung |
@@ -406,15 +408,17 @@ Auf der Konto-Seite trägt man Urlaub von–bis ein. Er gilt für Privat und Arb
 - **In der ersten Nacht danach** rückt `shift_after_vacation` alles nach hinten, was bis zum letzten Urlaubstag fällig war. Intervall-Aufgaben rücken um die Urlaubstage, Wochentagsregeln um volle Wochen, damit der Wochentag stimmt. Monatsregeln bleiben und stehen danach höchstens einmal überfällig da. Deadlines einmaliger Aufgaben bleiben, das sind echte Termine. Danach wird der Urlaub aus dem Profil gelöscht.
 - **Früher zurück:** Enddatum auf gestern setzen, dann wird in der nächsten Nacht um die tatsächlichen Tage verschoben. Wird der Urlaub ganz gelöscht, wird nichts verschoben.
 
-### Morgennachricht
+### Benachrichtigungen
 
-Täglich 7:30 Uhr geht pro Nutzer eine Mitteilung an alle Geräte mit Push-Abo, aber nur wenn etwas ansteht:
+Auf der Konto-Seite stellt man bis zu zehn Benachrichtigungen ein. Jede hat:
 
-- **ASAP:** private Aufgaben mit Priorität ASAP, die heute auf der Liste stehen oder fällig sind
-- **Deadline heute:** einmalige Aufgaben mit Deadline heute
-- **Deadline verpasst:** einmalige Aufgaben mit Deadline in der Vergangenheit
+- **Uhrzeit** in 15-Minuten-Schritten. Andere Minuten rundet die API ab.
+- **Tage:** `taeglich`, `werktags` (Mo–Fr) oder `wochenende` (Sa–So)
+- **Inhalt:**
+  - `morgen` („ASAP und Deadlines“): private ASAP-Aufgaben, die heute auf der Liste stehen oder fällig sind, einmalige Aufgaben mit Deadline heute und solche mit verpasster Deadline
+  - `offen` („Was noch offen ist“): alle offenen privaten Aufgaben von heute, ASAP zuerst, mit Summe der Minuten, etwa „Noch 3 Aufgaben · 12 min“
 
-Die erste Zeile ist der Titel, der Rest der Text. iOS zeigt den App-Namen selbst an („… from Quarto“), deshalb steht im Titel nicht noch einmal „Quarto“. Steht nichts an oder ist Urlaub, kommt nichts. Ein Tipp auf die Mitteilung öffnet Quarto.
+Die Einstellungen gelten für alle Geräte, Push selbst wird pro Gerät aktiviert. Es kommt nur eine Mitteilung, wenn es etwas zu sagen gibt, und im Urlaub nie. Die erste Zeile ist der Titel, der Rest der Text. iOS zeigt den App-Namen selbst an („… from Quarto“), deshalb steht im Titel nicht noch einmal „Quarto“. Ein Tipp auf die Mitteilung öffnet Quarto.
 
 ### Fortschritt
 
@@ -574,7 +578,7 @@ Auf Touch-Geräten sind die Tastenhinweise ausgeblendet.
 
 `sw.js` ist nur für Push da und cacht nichts. Er zeigt eingehende Nachrichten als Mitteilung an und öffnet bei Tipp die App bzw. holt sie nach vorn.
 
-Auf der Konto-Seite schaltet „Morgen-Benachrichtigung“ Push pro Gerät ein und aus. Aktivieren fragt die Erlaubnis ab, registriert den Service Worker, abonniert beim Push-Dienst mit dem öffentlichen VAPID-Schlüssel und speichert das Abo. „Test senden“ schickt sofort an alle Geräte.
+Auf der Konto-Seite schaltet der Bereich „Benachrichtigungen“ Push pro Gerät ein und aus. Aktivieren fragt die Erlaubnis ab, registriert den Service Worker, abonniert beim Push-Dienst mit dem öffentlichen VAPID-Schlüssel und speichert das Abo. „Test senden“ schickt sofort an alle Geräte.
 
 ### Cache-Busting
 
@@ -677,7 +681,7 @@ Bei einem Nutzer praktisch null:
 | Lambda ARM64 | wenige tausend Aufrufe | Free Tier |
 | API Gateway HTTP API | Polling alle 60 s bei geöffneter App | rund 1 $ pro Million Aufrufe, im Monat Cents |
 | Cognito | 1 aktiver Nutzer | Free Tier |
-| EventBridge und Scheduler | 60 Aufrufe im Monat | kostenlos |
+| EventBridge und Scheduler | rund 3.000 Aufrufe im Monat | kostenlos |
 | SSM Parameter Store | ein Standard-Parameter | kostenlos |
 | Web Push | Apple und Google stellen kostenlos zu | kostenlos |
 | GitHub Pages | statische Dateien | kostenlos |
