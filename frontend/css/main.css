@@ -347,7 +347,8 @@ kbd {
 .chip.hot { color: var(--overdue); border-color: rgba(240, 140, 90, 0.5); }
 
 .prio { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
-.prio-asap, .prio-high { background: var(--overdue); }
+.prio-asap { background: var(--danger); box-shadow: 0 0 0 2px rgba(240, 106, 106, 0.25); }
+.prio-high { background: var(--overdue); }
 .prio-medium { background: #E5C15A; }
 .prio-low { background: var(--accent); }
 
