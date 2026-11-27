@@ -376,3 +376,65 @@ def suggestions(user_id, force=False):
 def dismiss(user_id, kind, tmdb_id, genre_ids):
     table.put_item(Item={"PK": f"USER#{user_id}", "SK": f"MEDIA_NO#{kind}-{int(tmdb_id)}",
                          "genre_ids": [int(g) for g in genre_ids or []], "added": today()})
+
+
+# ---------- Tägliche und wöchentliche Prüfung ----------
+
+def label(item):
+    season = item.get("season")
+    return item["title"] + (f" Staffel {int(season)}" if item.get("kind") == "tv" and season is not None else "")
+
+
+def where_short(item):
+    providers = list(item.get("providers") or [])[:2]
+    if providers:
+        return " bei " + ", ".join(providers)
+    return " im Kino" if item.get("where") == "kino" else ""
+
+
+def short_date(iso):
+    y, m, d = (int(x) for x in iso.split("-"))
+    return f"{d}.{m}."
+
+
+def scheduled_handler(event, context):
+    """Täglich 9 Uhr deutscher Zeit (EventBridge Scheduler).
+
+    Jeden Tag: Mitteilung für alles Ungeschaute, das heute erscheint.
+    Freitags zusätzlich: alle ungeschauten Einträge neu bei TMDB abfragen, über geänderte Termine
+    oder neue Dienste informieren und die Vorschläge neu berechnen.
+    """
+    import push
+    from boto3.dynamodb.conditions import Attr
+
+    weekly = bool((event or {}).get("weekly")) or datetime.now(ZoneInfo("Europe/Berlin")).weekday() == 4
+    now = today()
+    results = {}
+    for profile in table.scan(FilterExpression=Attr("SK").eq("PROFILE"))["Items"]:
+        user_id = profile["PK"].removeprefix("USER#")
+        lines = []
+        if weekly:
+            for c in refresh_user(user_id):
+                name = c["title"] + (f" Staffel {int(c['season'])}" if c.get("season") is not None else "")
+                if c["after"] and c["after"] != c["before"] and c["after"] > now:
+                    lines.append(f"Neuer Termin: {name} ab {short_date(c['after'])}")
+                elif c["providers"] and (not c["after"] or c["after"] <= now):
+                    lines.append(f"Jetzt verfügbar: {name} bei {', '.join(c['providers'][:2])}")
+            try:
+                compute_suggestions(user_id)
+            except Exception as e:
+                print(f"Vorschläge {user_id}: {e}")
+        items = query_all(f"USER#{user_id}")
+        for item in items:
+            if item["SK"].startswith("MEDIA#") and not item.get("watched") and item.get("release_date") == now:
+                line = f"Heute neu: {label(item)}{where_short(item)}"
+                if line not in lines:
+                    lines.insert(0, line)
+        if lines:
+            message = {"title": lines[0], "body": "\n".join(lines[1:]), "url": push.APP_URL + "#kino",
+                       "tag": "quarto-kino"}
+            results[user_id] = push.send_to_user(user_id, message, items)
+        else:
+            results[user_id] = "nichts"
+    print(json.dumps({"weekly": weekly, **results}))
+    return results

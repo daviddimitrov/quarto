@@ -97,10 +97,21 @@ export class ElevenMinutesStack extends cdk.Stack {
     table.grantReadWriteData(apiFn);
     table.grantReadWriteData(collectFn);
     table.grantReadWriteData(pushFn);
+
+    // Kino & TV: täglich Mitteilung zu heutigen Starts, freitags TMDB-Abgleich und neue Vorschläge
+    const mediaFn = new lambda.Function(this, 'MediaFn', {
+      ...common,
+      handler: 'media.scheduled_handler',
+      memorySize: 256,
+      timeout: cdk.Duration.minutes(5),
+    });
+    table.grantReadWriteData(mediaFn);
     vapid.grantRead(apiFn);
     tmdbToken.grantRead(apiFn);
     tmdbToken.grantRead(pushFn);
     vapid.grantRead(pushFn);
+    vapid.grantRead(mediaFn);
+    tmdbToken.grantRead(mediaFn);
 
     // Benachrichtigungen nach deutscher Zeit, Sommerzeit inklusive
     const schedulerRole = new iam.Role(this, 'MorningPushRole', {
@@ -113,6 +124,15 @@ export class ElevenMinutesStack extends cdk.Stack {
       scheduleExpressionTimezone: 'Europe/Berlin',
       flexibleTimeWindow: { mode: 'OFF' },
       target: { arn: pushFn.functionArn, roleArn: schedulerRole.roleArn },
+    });
+
+    mediaFn.grantInvoke(schedulerRole);
+    new scheduler.CfnSchedule(this, 'MediaDaily', {
+      // Täglich 9 Uhr, freitags mit TMDB-Abgleich (entscheidet media.py)
+      scheduleExpression: 'cron(0 9 * * ? *)',
+      scheduleExpressionTimezone: 'Europe/Berlin',
+      flexibleTimeWindow: { mode: 'OFF' },
+      target: { arn: mediaFn.functionArn, roleArn: schedulerRole.roleArn },
     });
 
     const userPool = new cognito.UserPool(this, 'QuartoUsers', {
