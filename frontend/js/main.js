@@ -222,7 +222,7 @@ function loadView(view) {
 
     $('#addTaskButton').prop('hidden', view !== 'all');
     $('#evergreen-section').prop('hidden', !(view === 'all' && allKontext === 'privat'));
-    $('#evergreen-chips').prop('hidden', view !== 'today');
+    $('#evergreen-bar').prop('hidden', view !== 'today');
     $('#long-section').prop('hidden', !isDayView(view));
     $('#kontext-toggle button').each(function () {
         $(this).toggleClass('active', this.getAttribute('data-kontext') === allKontext);
@@ -1387,7 +1387,8 @@ function renderChips() {
         const used = onToday.has(t.name.trim().toLowerCase());
         return `<button type="button" class="chip-btn${used ? ' used' : ''}" data-name="${escapeHtml(t.name)}"${used ? ' disabled' : ''}>`
             + `${used ? '<i class="bi bi-check"></i>' : '<i class="bi bi-plus"></i>'}${escapeHtml(t.name)}</button>`;
-    }).join('')).toggleClass('empty-chips', items.length === 0);
+    }).join(''));
+    $('#evergreen-bar').toggleClass('empty-chips', items.length === 0);
 }
 
 function renderEvergreens(items) {

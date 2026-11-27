@@ -21,6 +21,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # Cache-Version im ausgelieferten HTML auf den Commit setzen, bump.sh ist nicht mehr nötig
+      - name: Cache-Version setzen
+        run: |
+          v=${GITHUB_SHA::7}
+          sed -i -E "s/(main\.(js|css))\?v=[^\"]*/\1?v=$v/g" frontend/index.html frontend/login.html
+          grep -o 'main\.[a-z]*?v=[0-9a-f]*' frontend/index.html
       - uses: actions/upload-pages-artifact@v4
         with:
           path: frontend

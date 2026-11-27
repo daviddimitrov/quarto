@@ -486,7 +486,8 @@ kbd {
     margin: 2px 0 10px;
 }
 
-.chips.empty-chips { display: none; }
+.evergreen-bar { margin-top: 26px; }
+.evergreen-bar.empty-chips { display: none; }
 
 .chip-btn {
     display: inline-flex;

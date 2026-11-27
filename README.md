@@ -360,7 +360,7 @@ Einrichtung in der Kurzbefehle-App: Kurzbefehl „Quarto“ mit den Aktionen *Na
 
 **Einmalig:** Wird über das Einmalig-Feld angelegt, optional mit Deadline. Im Code und in der Datenbank heißt das weiterhin `long_term` bzw. „langfristig“. Steht in der eigenen Liste unter Heute und hat keine Fälligkeit. Per Drag & Drop wandert sie auf heute und zurück. Zwei Tage vor der Deadline holt der Collector sie automatisch auf heute.
 
-**Evergreen:** Vorlage für Dinge ohne Termin, die immer wieder anfallen: Einkaufen, Wäsche, Gießen, Müll, Duschen. Evergreens werden in Alle (Privat) in einer eigenen Sektion gepflegt. Auf der Heute-Seite stehen sie als Chips über der Liste. Ein Tipp legt ein spontanes To-do mit demselben Namen an, ohne Dauer. Wie jedes private spontane To-do verfällt es nachts, die Vorlage bleibt. Der Chip ist grau, solange ein To-do mit diesem Namen auf heute steht. Der Collector ignoriert Evergreens.
+**Evergreen:** Vorlage für Dinge ohne Termin, die immer wieder anfallen: Einkaufen, Wäsche, Gießen, Müll, Duschen. Evergreens werden in Alle (Privat) in einer eigenen Sektion gepflegt. Auf der Heute-Seite stehen sie als Chips ganz unten, unter Heute und Einmalig. Ein Tipp legt ein spontanes To-do mit demselben Namen an, ohne Dauer. Wie jedes private spontane To-do verfällt es nachts, die Vorlage bleibt. Der Chip ist grau, solange ein To-do mit diesem Namen auf heute steht. Der Collector ignoriert Evergreens.
 
 ### Priorität
 
@@ -475,12 +475,12 @@ Alle Werte stehen als CSS-Variablen in `:root`.
 
 ### Layout
 
-- **iPhone (unter 900 px):** oben eine Umschaltleiste Heute / Arbeit / Alle und ein Konto-Knopf, darunter Budgetzeile, Evergreen-Chips (nur Heute), die Liste und die einklappbare Einmalig-Liste. Zeilen sind 44 px hoch, Eingabefelder nutzen 16 px Schrift, damit Safari nicht zoomt. Safe-Area-Abstände für Notch und Home-Indicator sind eingerechnet.
+- **iPhone (unter 900 px):** oben eine Umschaltleiste Heute / Arbeit / Alle und ein Konto-Knopf, darunter Budgetzeile, die Liste, die einklappbare Einmalig-Liste und ganz unten die Evergreen-Chips (nur Heute). Zeilen sind 44 px hoch, Eingabefelder nutzen 16 px Schrift, damit Safari nicht zoomt. Safe-Area-Abstände für Notch und Home-Indicator sind eingerechnet.
 - **Mac (ab 900 px):** links eine Seitenleiste mit Navigation, Zählern, Budget und Konto. Rechts Heute und Einmalig nebeneinander, Einmalig als eigenes Panel. Zeilen sind 40 px hoch, „⋯“ und Griff erscheinen beim Überfahren, Unteraufgaben stehen in zwei Spalten.
 
 ### Ansichten
 
-- **Heute:** Evergreen-Chips und private Aufgaben mit `today = 1`, darunter bzw. daneben Einmalig.
+- **Heute:** private Aufgaben mit `today = 1`, darunter bzw. daneben Einmalig, ganz unten die Evergreen-Chips.
 - **Arbeit:** Arbeitsaufgaben mit `today = 1`, darunter bzw. daneben die einmaligen Arbeitsaufgaben.
 - **Alle:** alle nicht langfristigen Aufgaben eines Kontexts mit Fälligkeit, Rhythmus, Dauer und Prioritätspunkt. Der Umschalter Privat/Arbeit wird gemerkt. Bei Privat folgt darunter die Sektion Evergreens mit eigenem Eingabefeld. Menü: Heute, Umbenennen, Löschen; ein Tipp auf den Namen benennt um.
 - **Konto:** Limits, heutiges Budget und Bedarf, dazu Logout.
@@ -578,7 +578,7 @@ Auf der Konto-Seite schaltet „Morgen-Benachrichtigung“ Push pro Gerät ein u
 
 ### Cache-Busting
 
-`main.js` und `main.css` werden mit `?v=<commit>` eingebunden. `bump.sh` setzt den Wert auf den aktuellen Commit-Hash, sodass Browser und PWA nach jedem Deployment die neuen Dateien laden statt alter Kopien.
+`main.js` und `main.css` werden mit `?v=<commit>` eingebunden. Der Pages-Workflow setzt den Wert bei jedem Deployment auf den Commit-Hash, sodass Browser und PWA die neuen Dateien laden statt alter Kopien.
 
 ### PWA und Dock-App
 
@@ -621,11 +621,9 @@ Dann `http://localhost:8000` öffnen. Localhost hat eigene Cookies und eigenen `
 
 ### Frontend deployen
 
-```sh
-cd frontend && ./bump.sh && git add index.html login.html && git commit -m "Bump cache version" && cd .. && git push
-```
+Ein Push auf `main` mit Änderungen in `frontend/` oder am Workflow startet `.github/workflows/pages.yml`. Der Job `build` setzt im ausgelieferten HTML die Cache-Version (`?v=`) von `main.js` und `main.css` auf den Commit-Hash und lädt `frontend/` als Pages-Artefakt hoch, `deploy` veröffentlicht es. `concurrency` bricht ältere Läufe ab. Nach ein bis zwei Minuten ist die neue Version live.
 
-Der Push auf `main` startet den Workflow `.github/workflows/pages.yml`, aber nur bei Änderungen in `frontend/` oder am Workflow selbst. Er hat zwei Jobs: `build` lädt `frontend/` als Pages-Artefakt hoch, `deploy` veröffentlicht es. `concurrency` bricht ältere Läufe ab. Nach ein bis zwei Minuten ist die neue Version live.
+`bump.sh` setzt die Version lokal und ist nur noch für Tests auf localhost interessant.
 
 ### Backend deployen
 
