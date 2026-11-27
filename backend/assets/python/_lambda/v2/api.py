@@ -387,7 +387,7 @@ def quick_add(event):
     if match is not None and (wants_today or normalize(match["name"]) == query):
         if any(t.get("today") == 1 and normalize(t["name"]) == normalize(match["name"]) for t in tasks):
             return 200, f"{match['name']} steht schon auf heute."
-        create_task({"user_id": user_id, "name": match["name"], "spontan": True, "kontext": "privat"})
+        create_task({}, {"user_id": user_id, "name": match["name"], "spontan": True, "kontext": "privat"})
         return 201, f"{match['name']} steht jetzt auf heute."
 
     # Sonst: einmalige Aufgabe
