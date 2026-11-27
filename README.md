@@ -139,6 +139,14 @@ aws ssm put-parameter --name /quarto/vapid --type SecureString --region eu-centr
 
 `ApiFn` und `PushFn` dürfen ihn lesen. Ein neuer Schlüssel macht alle bestehenden Abos ungültig, dann muss jedes Gerät Push neu aktivieren.
 
+### TMDB
+
+Kino & TV braucht den API-Lesezugriffs-Token von themoviedb.org (Einstellungen → API → „API Read Access Token“). Er liegt als Secret `TMDB_TOKEN` in GitHub (Settings → Secrets and variables → Actions). Der Backend-Workflow gibt ihn beim Deploy als Umgebungsvariable `TMDB_TOKEN` an `ApiFn` und `PushFn` weiter.
+
+Der Token steht damit im Klartext in der Lambda-Konfiguration und im CloudFormation-Template, sichtbar für jeden mit Zugriff auf das AWS-Konto. Für einen kostenlosen, rein lesenden Token ist das vertretbar, für die VAPID-Schlüssel wäre es das nicht.
+
+Wichtig beim lokalen Deploy: vorher `export TMDB_TOKEN=…` setzen, sonst wird die Variable leer deployt. Dann fällt `media.py` auf den SecureString `/quarto/tmdb` in SSM zurück, falls es ihn gibt, und ohne ihn funktioniert die Suche nicht. Der saubere Weg ist, nur noch über den Workflow zu deployen.
+
 ### Cognito
 
 - User Pool `quarto`, Selbstregistrierung aus, Login nur per Benutzername, Groß- und Kleinschreibung egal
@@ -220,6 +228,22 @@ Single-Table-Design: Alle Daten eines Nutzers liegen unter einem Partition Key, 
 | `subtasks` | Liste | `[{id, name, done}]` |
 | `evergreen` | Bool | Vorlage für immer wieder anfallende Kleinigkeiten |
 
+### Kino & TV
+
+`PK = USER#<id>`, `SK = MEDIA#<movie|tv>-<tmdb-id>[-s<staffel>]`
+
+| Attribut | Typ | Bedeutung |
+|---|---|---|
+| `tmdb_id`, `kind` | Zahl, String | Titel bei TMDB, `movie` oder `tv` |
+| `title`, `poster`, `genres` | | Anzeige, Poster-URL von TMDB, Genres für spätere Vorschläge |
+| `season`, `season_name` | | bei Serien die gewählte Staffel |
+| `release_date` | String | Kino- oder Streamingstart in Deutschland, bei Staffeln das Startdatum |
+| `where` | String | `kino` oder `stream` |
+| `providers` | Liste | Streamingdienste in Deutschland (Abo, kostenlos, mit Werbung), bei Serien ohne Daten der Sender |
+| `estimated` | Bool | Datum unsicher, etwa weltweiter Start statt deutscher |
+| `watched` | Bool | geschaut |
+| `added`, `checked` | String | hinzugefügt am, zuletzt bei TMDB abgefragt |
+
 ### Push-Abo
 
 `PK = USER#<id>`, `SK = PUSH#<erste 32 Zeichen des SHA-256 vom Endpoint>`
@@ -263,6 +287,13 @@ Basis-URL: `https://vs7ubni3p3.execute-api.eu-central-1.amazonaws.com/`. Alle Ro
 | `PUT /user/{userId}/profile` | `put_profile_route` | Limits und Urlaub setzen |
 | `POST /user/{userId}/quick-key` | `create_quick_key` | neuen Schlüssel für den Siri-Kurzbefehl erzeugen |
 | `POST /quick` | `quick_add` | Siri-Kurzbefehl, ohne Cognito, siehe unten |
+| `GET /media/search?q=` | `media_search` | Filme und Serien bei TMDB suchen |
+| `GET /media/tv/{tmdbId}/seasons` | `media_seasons` | Staffeln einer Serie mit Startdatum |
+| `GET /user/{userId}/media` | `media_list` | eigene Liste Kino & TV |
+| `POST /user/{userId}/media` | `media_add` | hinzufügen, Body `{type, tmdbId, season?}` |
+| `PATCH /user/{userId}/media/{mediaId}/watched` | `media_watched` | geschaut umschalten |
+| `DELETE /user/{userId}/media/{mediaId}` | `media_delete` | entfernen |
+| `POST /user/{userId}/media/refresh` | `media_refresh` | alle ungeschauten Einträge neu bei TMDB abfragen |
 | `GET /push/key` | `push_key` | öffentlicher VAPID-Schlüssel für das Abo im Browser |
 | `POST /user/{userId}/push` | `push_subscribe` | Push-Abo speichern, Body `{"subscription": …}` |
 | `DELETE /user/{userId}/push` | `push_unsubscribe` | Push-Abo löschen, Body `{"endpoint": …}` |
@@ -431,6 +462,16 @@ Auf der Konto-Seite stellt man bis zu zehn Benachrichtigungen ein. Jede hat:
   - `offen` („Was noch offen ist“): alle offenen privaten Aufgaben von heute, ASAP zuerst, mit Summe der Minuten, etwa „Noch 3 Aufgaben · 12 min“
 
 Die Einstellungen gelten für alle Geräte, Push selbst wird pro Gerät aktiviert. Es kommt nur eine Mitteilung, wenn es etwas zu sagen gibt, und im Urlaub nie. Die erste Zeile ist der Titel, der Rest der Text. iOS zeigt den App-Namen selbst an („… from Quarto“), deshalb steht im Titel nicht noch einmal „Quarto“. Ein Tipp auf die Mitteilung öffnet Quarto.
+
+### Kino & TV
+
+Eigene Seite für Filme und Serien, die man sehen will. Sie ist bewusst getrennt von den Aufgaben: kein Budget, kein Collector.
+
+- **Hinzufügen:** Oben suchen, TMDB liefert Treffer mit Jahr und Typ. Ein Film wird direkt hinzugefügt. Bei einer Serie wählt man die Staffel, die nächste kommende ist vorausgewählt.
+- **Release-Infos** (`media.py`): Bei Filmen zählen die deutschen Einträge von TMDB: Kinostart (Typ 2 und 3) und digitaler Start (Typ 4). Läuft der Film schon bei einem Streamingdienst, steht der Dienst da, sonst „Kino ab …“. Bei Staffeln das Startdatum der Staffel und die Dienste der Serie in Deutschland. Das Datum ist meist der weltweite Start, deshalb steht bei kommenden Staffeln „voraussichtlich“. Die Streaming-Infos stammen bei TMDB von JustWatch und umfassen auch die Mediatheken von ARD, ZDF und Arte. Kauf und Leihe zählen nicht.
+- **Gruppen:** Jetzt verfügbar (erschienen, aber noch nicht geschaut), Demnächst (nach Datum), Termin offen, Geschaut (eingeklappt).
+- **Abhaken** markiert als geschaut, ein zweiter Tipp nimmt das zurück. Das x entfernt den Eintrag.
+- **Daten aktualisieren** fragt alle ungeschauten Einträge neu bei TMDB ab und zeigt, was sich geändert hat.
 
 ### Fortschritt
 

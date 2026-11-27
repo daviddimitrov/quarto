@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from boto3.dynamodb.conditions import Attr
 
+import media
 import push
 from collect_today import NO_VALUE, collect_for_user, interval_days, query_all, table
 
@@ -675,6 +676,54 @@ def push_test(p, body):
     return 200, {"sent": push.send_to_user(p["userId"], message, items)}
 
 
+# ---------- Kino & TV ----------
+
+def media_search(p, body):
+    q = (p.get("q") or "").strip()
+    return 200, media.search(q) if len(q) >= 2 else []
+
+
+def media_seasons(p, body):
+    return 200, media.tv_seasons(int(p["tmdbId"]))
+
+
+def media_list(p, body):
+    return 200, media.list_media(p["userId"])
+
+
+def media_add(p, body):
+    kind = body.get("type")
+    if kind not in ("movie", "tv") or not body.get("tmdbId"):
+        return 400, {"message": "type movie oder tv und tmdbId nötig"}
+    info = media.fetch_info(kind, int(body["tmdbId"]), body.get("season"))
+    if kind == "tv" and info.get("season") is None:
+        return 400, {"message": "Die Serie hat noch keine Staffel"}
+    return 201, media.to_dto(media.store(p["userId"], kind, int(body["tmdbId"]), info))
+
+
+def media_item(user_id, media_id):
+    return table.get_item(Key={"PK": f"USER#{user_id}", "SK": f"MEDIA#{media_id}"}).get("Item")
+
+
+def media_watched(p, body):
+    item = media_item(p["userId"], p["mediaId"])
+    if item is None:
+        return 404, {"message": "Nicht gefunden"}
+    watched = not item.get("watched")
+    table.update_item(Key={"PK": item["PK"], "SK": item["SK"]}, UpdateExpression="SET watched = :w",
+                      ExpressionAttributeValues={":w": watched})
+    return 200, media.to_dto({**item, "watched": watched})
+
+
+def media_delete(p, body):
+    table.delete_item(Key={"PK": f"USER#{p['userId']}", "SK": f"MEDIA#{p['mediaId']}"})
+    return 204, {}
+
+
+def media_refresh(p, body):
+    return 200, {"changes": media.refresh_user(p["userId"]), "items": media.list_media(p["userId"])}
+
+
 ROUTES = {
     "GET /user": list_users,
     "GET /user/{userId}/profile": get_profile_route,
@@ -686,6 +735,13 @@ ROUTES = {
     "POST /user/{userId}/push/test": push_test,
     "PUT /user/{userId}/notifications": put_notifications,
     "POST /user/{userId}/redistribute": redistribute,
+    "GET /media/search": media_search,
+    "GET /media/tv/{tmdbId}/seasons": media_seasons,
+    "GET /user/{userId}/media": media_list,
+    "POST /user/{userId}/media": media_add,
+    "PATCH /user/{userId}/media/{mediaId}/watched": media_watched,
+    "DELETE /user/{userId}/media/{mediaId}": media_delete,
+    "POST /user/{userId}/media/refresh": media_refresh,
     "GET /user/{userId}/tasks": list_tasks,
     "GET /user/{userId}/tasks/today": lambda p, b: list_tasks(p, b, mode="today"),
     "GET /user/{userId}/tasks/long": lambda p, b: list_tasks(p, b, mode="long"),

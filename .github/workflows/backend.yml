@@ -39,3 +39,4 @@ jobs:
       - run: npx cdk deploy --require-approval never
         env:
           JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION: "1"
+          TMDB_TOKEN: ${{ secrets.TMDB_TOKEN }}
