@@ -627,11 +627,25 @@ Ein Push auf `main` mit Änderungen in `frontend/` oder am Workflow startet `.gi
 
 ### Backend deployen
 
+Ein Push auf `main` mit Änderungen in `backend/` oder am Workflow startet `.github/workflows/backend.yml`. Der Workflow meldet sich per OIDC bei AWS an, ohne gespeicherte Schlüssel, installiert die Abhängigkeiten und führt `npx cdk deploy --require-approval never` aus. Den `CryptoLayer` baut CDK dabei mit dem Python des Runners. Über „Run workflow“ in GitHub lässt er sich auch von Hand starten.
+
+Weil der Workflow nicht nachfragt, gehen auch IAM-Änderungen ohne Bestätigung raus. Wer Backend-Änderungen merged, deployt sie also.
+
+Einmalige Einrichtung in AWS, lokal mit Admin-Zugang:
+
+```sh
+sh backend/scripts/setup-github-deploy.sh
+```
+
+Das Skript legt den OIDC-Provider für GitHub an, falls es ihn im Konto noch nicht gibt, und die Rolle `quarto-github-deploy`. Annehmen kann sie nur ein Workflow aus `main` von `daviddimitrov/quarto`, und sie darf nichts außer die Rollen übernehmen, die `cdk bootstrap` angelegt hat. Das Skript lässt sich gefahrlos mehrfach ausführen.
+
+Lokal deployen geht weiterhin:
+
 ```sh
 cd backend && JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1 npx cdk deploy
 ```
 
-Bei IAM-Änderungen fragt CDK mit `y/n` nach. Die Ausgabe dabei nicht durch `grep` filtern, sonst sieht man die Frage nicht. Lambda-Code-Änderungen (`api.py`, `collect_today.py`) brauchen nur dieses Deployment, kein Frontend-Bump. Ein `cdk diff` zeigt manchmal Änderungen an der Lambda, nur weil `__pycache__` entstanden ist. Das ist harmlos.
+Bei IAM-Änderungen fragt CDK lokal mit `y/n` nach. Die Ausgabe dabei nicht durch `grep` filtern, sonst sieht man die Frage nicht. Ein `cdk diff` zeigt manchmal Änderungen an der Lambda, nur weil `__pycache__` entstanden ist. Das ist harmlos.
 
 ### Collector manuell auslösen
 
