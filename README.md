@@ -323,8 +323,18 @@ Ein PUT ändert nur die mitgeschickten Felder. Das Frontend schickt beim Abhaken
 `POST /quick` ist die einzige Route ohne JWT-Authorizer, weil ein Kurzbefehl kein Cognito-Token erneuern kann. Stattdessen prüft `api.py` den Header `X-Quarto-Key`:
 
 - Auf der Konto-Seite erzeugt „Schlüssel erzeugen“ einen zufälligen Schlüssel (`secrets.token_urlsafe`). Gespeichert wird nur sein SHA-256-Hash im Profil, der Schlüssel selbst wird genau einmal angezeigt. Ein neuer Schlüssel macht den alten ungültig.
-- Der Kurzbefehl schickt `{"text": "…"}`. Beginnt der Text mit „Arbeit“, wird es eine Arbeitsaufgabe, sonst privat. Danach wird wie im Einmalig-Feld nach `bis …` gesucht. Zusätzlich versteht der Parser Diktatformen wie „bis zum 3. Dezember“ und „bis 15. März 2027“. Satzzeichen am Ende, die Siri anhängt, werden entfernt.
-- Angelegt wird immer eine einmalige Aufgabe. Die Antwort ist reiner Text („Steuer steht unter Einmalig, bis 31.7.“), den der Kurzbefehl anzeigt bzw. Siri vorliest.
+- Der Kurzbefehl schickt `{"text": "…"}`. `quick_add` erkennt an festen Wörtern, was gemeint ist, und prüft in dieser Reihenfolge:
+
+| Gesagt | Erkannt an | Wirkung | Antwort |
+|---|---|---|---|
+| „Was steht heute an?“, „Was ist noch offen?“ | Fragewort am Anfang, „steht an“, „noch offen“, „noch zu tun“ | nichts | offene private Aufgaben von heute, ASAP zuerst |
+| „Küche erledigt“, „Hake Flur saugen ab“, „Toilette fertig“ | „erledigt“, „fertig“, „gemacht“, „abhaken“, „hake … ab“ | hakt die passende Aufgabe ab | „Küche saugen ist erledigt. Noch 2: …“ |
+| „Einkaufen“, „Wäsche heute“, „Müll auf heute“ | Name eines Evergreens, allein oder mit „heute“, „auf heute“, „dazu“, „hinzufügen“ | Evergreen kommt als spontanes To-do auf heute | „Einkaufen steht jetzt auf heute.“ |
+| alles andere, „Arbeit …“ für Arbeit | | einmalige Aufgabe, optional mit `bis …` | „Steuer steht unter Einmalig, bis 31.7.“ |
+
+- **Abhaken:** Gesucht wird unter den offenen privaten Aufgaben von heute, danach unter den einmaligen. Verglichen wird ohne Groß- und Kleinschreibung, Umlaute und Füllwörter. Ein Teilwort reicht, „Küche“ findet „Küche saugen“. Passen zwei Aufgaben gleich gut („Saugen erledigt“), fragt Siri nach, statt zu raten. Abgehakt wird wie in der App, mit nächster Fälligkeit und gezählten Minuten, aber ohne Rückgängig.
+- **Deadlines:** wie im Einmalig-Feld `bis …`, zusätzlich Diktatformen wie „bis zum 3. Dezember“ und „bis 15. März 2027“. Satzzeichen, die Siri anhängt, werden entfernt.
+- **Antwort:** immer reiner Text mit Status 200, den der Kurzbefehl anzeigt bzw. Siri vorliest. So klappt die Bedienung auch nur mit Kopfhörern.
 
 Einrichtung in der Kurzbefehle-App: Kurzbefehl „Quarto“ mit den Aktionen *Nach Eingabe fragen* (Text), *Inhalte von URL abrufen* (POST auf `<ApiUrl>/quick`, Header `X-Quarto-Key`, JSON-Feld `text` = *Bereitgestellte Eingabe*) und *Ergebnis anzeigen*. Die Konto-Seite zeigt die Schritte samt URL beim Erzeugen des Schlüssels.
 
@@ -408,7 +418,9 @@ Die erste Zeile ist der Titel, der Rest der Text. iOS zeigt den App-Namen selbst
 
 ### Fortschritt
 
-Der Balken auf der Heute-Seite zeigt erledigte Minuten im Verhältnis zum heutigen Budget, zum Beispiel `4 / 18 min · +3 Übertrag`. Er wächst also mit jedem Haken. Sind alle Aufgaben mit Dauer erledigt, ist er voll, auch wenn die geplanten Minuten das Budget nicht ganz ausgeschöpft haben.
+Der Balken auf der Heute-Seite zeigt das Budget minus die noch offenen Minuten, zum Beispiel `1 / 18 min · +3 Übertrag`. Was der Collector nicht verplanen konnte, zählt also von Anfang an als geschafft: Morgens steht der Balken schon leicht gefüllt, mit jedem Haken wächst er, und sind alle Aufgaben mit Dauer erledigt, ist er voll. Berechnet wird er im Frontend aus der Heute-Liste, er stimmt deshalb auf allen Geräten nach dem nächsten Sync. Liegen mehr offene Minuten als Budget auf heute, etwa durch eine hochgezogene Aufgabe, beginnt er bei 0.
+
+`done_minutes` im Profil zählt weiterhin die erledigten privaten Minuten pro Tag, wird für den Balken aber nicht mehr gebraucht.
 
 ### Bedarf
 
@@ -586,6 +598,7 @@ Typischer Tag:
 3. Kleinigkeiten wie Einkaufen oder Wäsche per Evergreen-Chip auf heute holen. Sie verschwinden über Nacht von selbst.
 4. Passt eine Aufgabe heute nicht: „⋯“, Morgen oder Nächste Woche.
 5. Alles Einmalige ins Einmalig-Feld, bei Bedarf mit `bis …`, oder unterwegs per „Hey Siri, Quarto“. Wenn Zeit ist, auf Heute ziehen.
+6. Beim Haushalt mit Kopfhörern: „Hey Siri, Quarto“ und dann „Was steht heute an?“, „Küche erledigt“ oder „Einkaufen“.
 
 Neue wiederkehrende Aufgaben legt man in Alle an, Rhythmus und Dauer ehrlich schätzen. Die Konto-Seite zeigt danach, ob das Limit noch reicht.
 

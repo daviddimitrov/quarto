@@ -1,3 +1,4 @@
+import difflib
 import hashlib
 import json
 import re
@@ -278,8 +279,74 @@ def user_from_quick_key(key):
     return _KEY_CACHE[h]
 
 
+def normalize(text):
+    text = text.lower()
+    for a, b in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        text = text.replace(a, b)
+    return " ".join(re.findall(r"[a-z0-9]+", text))
+
+
+def best_match(query, candidates):
+    """Sucht den Namen, der am besten zum Gesprochenen passt. Gibt (Treffer, Zweitbester) zurück."""
+    q = normalize(query)
+    if not q:
+        return None, None
+    scored = []
+    for c in candidates:
+        n = normalize(c["name"])
+        score = difflib.SequenceMatcher(None, q, n).ratio()
+        if q == n:
+            score = 2
+        elif q in n or n in q:
+            score = max(score, 0.85)
+        elif set(q.split()) <= set(n.split()):
+            score = max(score, 0.8)
+        scored.append((score, c))
+    scored.sort(key=lambda x: -x[0])
+    good = [c for score, c in scored if score >= 0.6]
+    if not good:
+        return None, None
+    top = scored[0]
+    runner = scored[1] if len(scored) > 1 and scored[1][0] >= 0.6 and top[0] - scored[1][0] < 0.05 else None
+    return top[1], (runner[1] if runner else None)
+
+
+def join_names(names):
+    names = list(names)
+    if len(names) <= 1:
+        return "".join(names)
+    return ", ".join(names[:-1]) + " und " + names[-1]
+
+
+def open_today(tasks):
+    return sorted([t for t in tasks if t.get("today") == 1 and t.get("kontext", "privat") == "privat"],
+                  key=lambda t: (int(t.get("priority") or NO_VALUE), t.get("ordnung", NO_VALUE)))
+
+
+def say_open(tasks, prefix=""):
+    rest = open_today(tasks)
+    if not rest:
+        return prefix + "Heute ist alles erledigt."
+    names = [t["name"] for t in rest]
+    if len(names) == 1:
+        return prefix + f"Noch eine Aufgabe: {names[0]}."
+    return prefix + f"Noch {len(names)}: {join_names(names)}."
+
+
+DONE_WORDS = r"\b(erledigt|fertig|gemacht|abhaken|abgehakt|hake|ab|ist|sind|habe|hab|ich|die|der|das|den)\b"
+LIST_PATTERN = r"^(was|welche|wie ?viel|liste|zeig|sag)\b|steht .*an|noch offen|noch zu tun|ansteht"
+DONE_PATTERN = r"\b(erledigt|fertig|gemacht|abhaken|abgehakt)\b|^hake\b"
+TODAY_PATTERN = r"\b(auf heute|heute|hinzufuegen|hinzu|dazu)\b"
+
+
 def quick_add(event):
-    """POST /quick vom Kurzbefehl: legt eine einmalige Aufgabe an und antwortet mit Text für Siri."""
+    """POST /quick vom Kurzbefehl. Versteht vier Arten von Sätzen und antwortet mit Text für Siri:
+
+    - "Was steht heute an?"        -> offene private Aufgaben von heute
+    - "Küche saugen erledigt"      -> hakt die passende Aufgabe ab
+    - "Einkaufen" / "Einkaufen heute" -> passender Evergreen kommt auf heute
+    - alles andere                 -> einmalige Aufgabe, optional mit "bis ..."
+    """
     headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
     user_id = user_from_quick_key(headers.get("x-quarto-key"))
     if user_id is None:
@@ -288,21 +355,54 @@ def quick_add(event):
         body = json.loads(event.get("body") or "{}")
     except ValueError:
         body = {"text": event.get("body") or ""}
-    text = str(body.get("text") or "").strip()
+    text = str(body.get("text") or "").strip().rstrip(".!? ")
+    if not text:
+        return 400, "Ich habe nichts verstanden."
+    plain = normalize(text)
+    tasks = [i for i in query_all(f"USER#{user_id}") if i["SK"].startswith("TASK#")]
+
+    # Was steht an?
+    if re.search(LIST_PATTERN, plain):
+        return 200, say_open(tasks)
+
+    # Abhaken
+    if re.search(DONE_PATTERN, plain):
+        query = re.sub(r"\s+", " ", re.sub(DONE_WORDS, " ", plain)).strip()
+        candidates = open_today(tasks) + [t for t in tasks if t.get("long_term") and t.get("today") != 1
+                                          and t.get("kontext", "privat") == "privat"]
+        match, other = best_match(query, candidates)
+        if match is None:
+            return 200, "Dazu finde ich nichts. " + say_open(tasks)
+        if other is not None:
+            return 200, f"Meinst du {match['name']} oder {other['name']}? Sag es bitte genauer."
+        set_done({"userId": user_id, "taskId": match["id"]}, {})
+        remaining = [t for t in tasks if t["id"] != match["id"]]
+        return 200, say_open(remaining, prefix=f"{match['name']} ist erledigt. ")
+
+    # Evergreen auf heute
+    evergreens = [t for t in tasks if t.get("evergreen")]
+    query = re.sub(r"\s+", " ", re.sub(TODAY_PATTERN, " ", plain)).strip()
+    match, _ = best_match(query, evergreens) if evergreens else (None, None)
+    wants_today = bool(re.search(TODAY_PATTERN, plain))
+    if match is not None and (wants_today or normalize(match["name"]) == query):
+        if any(t.get("today") == 1 and normalize(t["name"]) == normalize(match["name"]) for t in tasks):
+            return 200, f"{match['name']} steht schon auf heute."
+        create_task({"user_id": user_id, "name": match["name"], "spontan": True, "kontext": "privat"})
+        return 201, f"{match['name']} steht jetzt auf heute."
+
+    # Sonst: einmalige Aufgabe
     kontext = "privat"
     m = re.match(r"^arbeit\b[\s:,.-]*(.*)$", text, re.IGNORECASE)
     if m:
         kontext, text = "arbeit", m.group(1).strip()
-    text = text.rstrip(".!? ")
     if not text:
         return 400, "Ich habe nichts verstanden."
     name, deadline = parse_deadline(text, today())
     name = name[:1].upper() + name[1:]
-    items = [i for i in query_all(f"USER#{user_id}") if i["SK"].startswith("TASK#")]
     task_id = uuid.uuid4().hex
     item = {**key(user_id, task_id), "id": task_id, "name": name, "kontext": kontext,
             "long_term": True, "spontan": False, "today": 0,
-            "ordnung": max((i.get("ordnung", 0) for i in items), default=0) + 1000}
+            "ordnung": max((i.get("ordnung", 0) for i in tasks), default=0) + 1000}
     if deadline:
         item["deadline"] = deadline.isoformat()
     table.put_item(Item=item)

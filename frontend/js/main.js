@@ -885,22 +885,22 @@ function renderVacation() {
 function renderBudget() {
     renderVacation();
     const p = readRaw(profileKey());
-    const open = (readRaw(`quarto_today_privat_${$.cookie('user_id')}`) || [])
-        .filter(t => Number(t.duration) > 0);
-    const done = Number(p && p.doneToday) || 0;
+    const openMinutes = (readRaw(`quarto_today_privat_${$.cookie('user_id')}`) || [])
+        .reduce((sum, t) => sum + (Number(t.duration) || 0), 0);
     if (!p || p.budgetToday == null) {
-        $('#budget-line, #side-budget-value').text(`${done} min`);
+        $('#budget-line, #side-budget-value').text(`${openMinutes} min offen`);
         return;
     }
     const budget = Number(p.budgetToday) || 0;
     const daily = Number(p.dailyLimit) || budget;
     const carry = Math.max(0, budget - daily);
-    $('#budget-line').text(`${done} / ${budget} min` + (carry ? ` · +${carry} Übertrag` : ''));
-    $('#side-budget-value').text(`${done} / ${budget} min`);
 
-    // Balken wächst mit erledigten Minuten, ist alles abgehakt, ist er voll
-    const pct = done > 0 && open.length === 0 ? 100 : Math.min(100, done / Math.max(budget, 1) * 100);
-    $('.bar .fill').css('width', pct + '%');
+    // Balken = Budget minus offene Minuten. Was nicht verplant ist, zählt von Anfang an als geschafft,
+    // sind alle Aufgaben abgehakt, ist er voll
+    const filled = Math.max(0, budget - openMinutes);
+    $('#budget-line').text(`${filled} / ${budget} min` + (carry ? ` · +${carry} Übertrag` : ''));
+    $('#side-budget-value').text(`${filled} / ${budget} min`);
+    $('.bar .fill').css('width', Math.min(100, filled / Math.max(budget, 1) * 100) + '%');
     $('.bar .carry').css('width', '0%');
 }
 
