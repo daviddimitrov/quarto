@@ -159,8 +159,16 @@
                 </form>
 
                 <div class="panel" id="push">
-                    <div class="demand-head"><i class="bi bi-bell"></i><span>Morgen-Benachrichtigung</span></div>
-                    <p class="muted small">Jeden Morgen um 7:30 Uhr, wenn etwas mit ASAP oder eine Deadline ansteht. Gilt pro Gerät.</p>
+                    <div class="demand-head"><i class="bi bi-bell"></i><span>Benachrichtigungen</span>
+                        <button type="button" class="info-btn" data-info="<b>ASAP und Deadlines</b>: ASAP-Aufgaben von heute und fällige Deadlines<br><b>Was noch offen ist</b>: offene Aufgaben von Heute mit Minuten<br>Es kommt nur etwas, wenn es etwas zu sagen gibt, und im Urlaub nie.<br>Uhrzeiten in 15-Minuten-Schritten, sie gelten für alle Geräte." aria-label="Hilfe"><i class="bi bi-info-circle"></i></button>
+                    </div>
+                    <div id="notif-list" class="notif-list"></div>
+                    <div class="actions start">
+                        <button type="button" class="btn" id="notifAdd"><i class="bi bi-plus-lg"></i> Hinzufügen</button>
+                        <button type="button" class="btn primary" id="notifSave">Speichern</button>
+                    </div>
+                    <p class="small" id="notifMessage"></p>
+                    <p class="muted small">Auf diesem Gerät:</p>
                     <p class="small" id="pushStatus"></p>
                     <div class="actions start">
                         <button type="button" class="btn primary" id="pushEnable" hidden>Aktivieren</button>
