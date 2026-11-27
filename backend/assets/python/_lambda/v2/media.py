@@ -8,7 +8,7 @@ import json
 import os
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import boto3
@@ -57,8 +57,9 @@ def providers_de(data):
     for kind in ("flatrate", "free", "ads"):
         for p in de.get(kind) or []:
             # "Apple TV Amazon Channel" und Co. sind derselbe Dienst über Amazon, nur Rauschen
-            if p.get("provider_name") and "Channel" not in p["provider_name"] and p["provider_name"] not in names:
-                names.append(p["provider_name"])
+            name = (p.get("provider_name") or "").removesuffix(" with Ads").strip()
+            if name and "Channel" not in name and name not in names:
+                names.append(name)
     return names
 
 
@@ -157,6 +158,7 @@ def tv_info(tmdb_id, season=None):
         "season": (chosen or {}).get("season_number"),
         "seasonName": (chosen or {}).get("name"),
         "providers": providers or network,
+        "deProviders": bool(providers),
         "releaseDate": air,
         "where": "stream",
         # Das Datum ist meist der weltweite Start, ob Deutschland am selben Tag dran ist, steht erst fest, wenn es läuft
@@ -243,7 +245,7 @@ def refresh_user(user_id):
 
 # ---------- Vorschläge ----------
 
-SUGGEST_SK = "MEDIA_SUGGEST"
+SUGGEST_SK = "MEDIA_SUGGEST#v2"   # neue Version, damit alte Vorschläge nicht eine Woche stehen bleiben
 MAX_SOURCES = 15       # so viele eigene Titel fließen höchstens ein, die neuesten zuerst
 SUGGESTIONS = 10
 
@@ -260,15 +262,32 @@ def candidate_from(r, kind=None):
             "genreIds": r.get("genre_ids") or []}
 
 
-def compute_suggestions(user_id):
-    """Empfehlungen zu den eigenen Titeln plus Trends und kommende Kinostarts, gefiltert auf das,
-    was in Deutschland läuft oder ins Kino kommt.
+def window():
+    """Zeitraum für Vorschläge: vom Ersten dieses Monats bis zum Ende des nächsten."""
+    now = date.fromisoformat(today())
+    start = now.replace(day=1)
+    after_next = date(now.year + (now.month + 1) // 12, (now.month + 1) % 12 + 1, 1)
+    return start.isoformat(), (after_next - timedelta(days=1)).isoformat()
 
-    Punkte: jede Empfehlung zu einem eigenen Titel 1, zu einem geschauten 2, Trend der Woche 0,6,
-    bald im Kino 0,5. Je Genre, das in weggeklickten Vorschlägen vorkam, gibt es Abzug.
+
+MONTHS_DE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September",
+             "Oktober", "November", "Dezember"]
+
+
+def compute_suggestions(user_id):
+    """Was diesen oder nächsten Monat in Deutschland startet, sortiert nach dem, was zu dir passt.
+
+    Kandidaten: TMDB-Empfehlungen zu den eigenen Titeln, deutsche Kino- und Streamingstarts im
+    Zeitraum (Discover) und die Trends der Woche. Behalten wird nur, was im Zeitraum in Deutschland
+    ins Kino kommt oder bei einem Dienst startet, bei Serien eine Staffel, die im Zeitraum beginnt.
+
+    Punkte: Empfehlung zu einem eigenen Titel 1, zu einem geschauten 2, je Genre, das auf deiner
+    Liste vorkommt, 0,2 (höchstens 0,6), Trend 0,4, Beliebtheit bis 0,5. Abzug je Genre, das in
+    weggeklickten Vorschlägen vorkam.
     """
     from concurrent.futures import ThreadPoolExecutor
 
+    start, end = window()
     items = query_all(f"USER#{user_id}")
     own = [i for i in items if i["SK"].startswith("MEDIA#")]
     have = {f"{i['kind']}-{int(i['tmdb_id'])}" for i in own}
@@ -282,44 +301,67 @@ def compute_suggestions(user_id):
     sources = sorted(own, key=lambda i: i.get("added", ""), reverse=True)[:MAX_SOURCES]
     scores, reasons, cands = {}, {}, {}
 
-    def add(c, points, reason):
+    def add(c, points, reason=None):
         key = f"{c['type']}-{c['tmdbId']}"
         if key in have or key in no or not c.get("title"):
             return
         cands.setdefault(key, c)
         scores[key] = scores.get(key, 0) + points
         reasons.setdefault(key, [])
-        if reason not in reasons[key]:
+        if reason and reason not in reasons[key]:
             reasons[key].append(reason)
 
-    def recs(i):
+    def safe(path, **params):
         try:
-            return i, tmdb(f"/{i['kind']}/{int(i['tmdb_id'])}/recommendations").get("results", [])[:10]
+            return tmdb(path, **params).get("results", [])
         except Exception as e:
-            print(f"Empfehlungen {i['SK']}: {e}")
-            return i, []
+            print(f"TMDB {path}: {e}")
+            return []
+
+    def recs(i):
+        return i, safe(f"/{i['kind']}/{int(i['tmdb_id'])}/recommendations")[:20]
 
     with ThreadPoolExecutor(max_workers=8) as pool:
+        # Genres der eigenen Liste als Namen, für den Abgleich mit den Genre-IDs der Kandidaten
+        genre_names = {}
+        for kind in ("movie", "tv"):
+            try:
+                for g in tmdb(f"/genre/{kind}/list").get("genres", []):
+                    genre_names[g["id"]] = g["name"]
+            except Exception as e:
+                print(f"Genres {kind}: {e}")
+        liked = {}
+        for i in own:
+            for g in i.get("genres") or []:
+                liked[g] = liked.get(g, 0) + 1
+
         for i, results in pool.map(recs, sources):
             for r in results:
                 add(candidate_from(r, i["kind"]), 2 if i.get("watched") else 1, i["title"])
-        try:
-            for r in tmdb("/trending/all/week").get("results", [])[:20]:
-                if r.get("media_type") in ("movie", "tv"):
-                    add(candidate_from(r), 0.6, "Trend")
-        except Exception as e:
-            print(f"Trends: {e}")
-        try:
-            for r in tmdb("/movie/upcoming", region="DE").get("results", [])[:15]:
-                add(candidate_from(r, "movie"), 0.5, "Kino")
-        except Exception as e:
-            print(f"Kinostarts: {e}")
+
+        discover = [
+            ("movie", {"region": "DE", "with_release_type": "2|3",
+                       "release_date.gte": start, "release_date.lte": end, "sort_by": "popularity.desc"}),
+            ("movie", {"watch_region": "DE", "with_watch_monetization_types": "flatrate|free|ads",
+                       "with_release_type": "4", "region": "DE",
+                       "release_date.gte": start, "release_date.lte": end, "sort_by": "popularity.desc"}),
+            ("tv", {"watch_region": "DE", "with_watch_monetization_types": "flatrate|free|ads",
+                    "air_date.gte": start, "air_date.lte": end, "sort_by": "popularity.desc"}),
+        ]
+        jobs = [(kind, params, page) for kind, params in discover for page in (1, 2)]
+        for kind, results in pool.map(lambda j: (j[0], safe(f"/discover/{j[0]}", page=j[2], **j[1])), jobs):
+            for rank, r in enumerate(results):
+                add(candidate_from(r, kind), 0.5 * (1 - rank / 40))
+        for r in safe("/trending/all/week")[:20]:
+            if r.get("media_type") in ("movie", "tv"):
+                add(candidate_from(r), 0.4, "Trend")
 
         for key, c in cands.items():
-            penalty = sum(no_genres.get(int(g), 0) for g in c["genreIds"]) * 0.3
-            scores[key] -= penalty
+            names = [genre_names.get(int(g)) for g in c["genreIds"]]
+            scores[key] += min(0.6, 0.2 * sum(1 for n in names if n and n in liked))
+            scores[key] -= 0.3 * sum(no_genres.get(int(g), 0) for g in c["genreIds"])
 
-        ranked = sorted(cands, key=lambda k: -scores[k])[:SUGGESTIONS * 3]
+        ranked = sorted(cands, key=lambda k: -scores[k])[:SUGGESTIONS * 5]
 
         def details(key):
             c = cands[key]
@@ -331,19 +373,21 @@ def compute_suggestions(user_id):
 
         result = []
         for key, info in pool.map(details, ranked):
-            if info is None:
-                continue
-            # Nur was in Deutschland läuft oder einen deutschen Kinostart hat
-            if not info.get("providers") and not (info.get("where") == "kino" and info.get("releaseDate")):
+            if not info or not info.get("releaseDate") or not (start <= info["releaseDate"] <= end):
                 continue
             c = cands[key]
-            own_reasons = [r for r in reasons[key] if r not in ("Trend", "Kino")]
+            if c["type"] == "tv" and not info.get("deProviders"):
+                continue   # Serie ohne deutschen Dienst, etwa nur beim US-Sender
+            if c["type"] == "movie" and not info.get("providers") and info.get("where") != "kino":
+                continue
+            own_reasons = [r for r in reasons[key] if r != "Trend"]
+            month = MONTHS_DE[int(info["releaseDate"][5:7]) - 1]
             if own_reasons:
                 why = "Weil du " + " und ".join(own_reasons[:2]) + " auf der Liste hast"
-            elif "Kino" in reasons[key]:
-                why = "Bald im Kino"
+            elif "Trend" in reasons[key]:
+                why = f"Diese Woche im Trend, neu im {month}"
             else:
-                why = "Diese Woche im Trend"
+                why = f"Neu im {month}"
             result.append({**c, "poster": info.get("poster") or c["poster"], "providers": info.get("providers") or [],
                            "releaseDate": info.get("releaseDate"), "where": info.get("where"),
                            "estimated": bool(info.get("estimated")), "season": info.get("season"),
