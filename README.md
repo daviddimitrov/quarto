@@ -188,7 +188,8 @@ Single-Table-Design: Alle Daten eines Nutzers liegen unter einem Partition Key, 
 | Attribut | Typ | Bedeutung |
 |---|---|---|
 | `name` | String | Login-Name, muss zum Cognito-User passen |
-| `default_duration` | Zahl | tägliches Zeitlimit in Minuten (Konto: „Tägliches Zeitlimit“) |
+| `default_duration` | Zahl | Zeitlimit Mo–Fr in Minuten (Konto: „Zeitlimit Mo–Fr“) |
+| `weekend_duration` | Zahl | Zeitlimit Sa–So in Minuten. Fehlt es, gilt das Limit von Mo–Fr |
 | `max_duration` | Zahl | Obergrenze inklusive Übertrag (Konto: „Maximal mit Übertrag“) |
 | `budget` | Zahl | heutiges Budget, vom Collector jede Nacht berechnet |
 | `done_minutes` | Zahl | heute erledigte private Minuten |
@@ -319,7 +320,7 @@ Ein PUT ändert nur die mitgeschickten Felder. Das Frontend schickt beim Abhaken
   "vacationFrom": "2026-12-20", "vacationTo": "2027-01-03" }
 ```
 
-`PUT` prüft: beide Limits zwischen 1 und 240, Maximum mindestens so groß wie das Tageslimit. Urlaub braucht beide Daten oder keins, das Ende darf nicht vor dem Start liegen; ohne Daten wird ein bestehender Urlaub entfernt. Sonst gibt es 400 mit deutscher Fehlermeldung.
+Dazu kommen `weekendLimit` (Sa–So) und `limitToday`, das Limit, das heute gilt. `PUT` prüft: alle Limits zwischen 1 und 240, Maximum mindestens so groß wie beide Tageslimits. Urlaub braucht beide Daten oder keins, das Ende darf nicht vor dem Start liegen; ohne Daten wird ein bestehender Urlaub entfernt. Sonst gibt es 400 mit deutscher Fehlermeldung.
 
 ### Siri-Kurzbefehl
 
@@ -395,7 +396,7 @@ Unteraufgaben werden nie automatisch erledigt, auch wenn alle abgehakt sind. Die
 
 ### Budget und Übertrag
 
-- **Tägliches Zeitlimit** (`default_duration`): so viele private Minuten plant der Collector pro Tag ein.
+- **Zeitlimit Mo–Fr und Sa–So** (`default_duration`, `weekend_duration`): so viele private Minuten plant der Collector pro Tag ein, je nach Wochentag. Unter der Woche ist durch das Home Office meist mehr Zeit als am Wochenende.
 - **Übertrag:** Bleiben abends geplante private Minuten offen, kommen sie auf das Budget des nächsten Tages: `budget = min(Maximum, Tageslimit + offene Minuten)`. So rutscht ein schlechter Tag nicht einfach weg, kann sich aber auch nicht endlos aufstauen.
 - **Maximum** (`max_duration`): Deckel für das Budget mit Übertrag.
 
@@ -407,7 +408,7 @@ Liegt mehr überfällig, als der Puffer zwischen Bedarf und Limit in absehbarer 
 
 - nimmt alle überfälligen privaten wiederkehrenden Aufgaben, die nicht schon heute auf der Liste stehen
 - sortiert sie nach relativem Rückstand, also überfälligen Tagen geteilt durch Rhythmus
-- verteilt sie ab morgen auf die folgenden Tage: Pro Tag kommt höchstens so viel dazu, wie das Tageslimit über dem Bedarf frei lässt, mindestens 5 Minuten. Eine größere Aufgabe bekommt einen Tag für sich.
+- verteilt sie ab morgen auf die folgenden Tage: Pro Tag kommt höchstens so viel dazu, wie das Limit im Wochenschnitt über dem Bedarf frei lässt, mindestens 5 Minuten. Eine größere Aufgabe bekommt einen Tag für sich.
 - setzt dafür nur `due_date`. Ab dem neuen Tag ist die Aufgabe normal fällig und läuft durch den Collector.
 
 Nichts gilt als erledigt, nur die Fälligkeiten rücken. Bei Wochentags- und Monatsregeln stimmt der Tag dadurch einmal nicht, nach dem nächsten Erledigen wieder. Der Knopf lässt sich jederzeit erneut drücken, zum Beispiel nach Krankheit.
@@ -442,7 +443,7 @@ Der Balken auf der Heute-Seite zeigt das Budget minus die noch offenen Minuten, 
 
 Die Konto-Seite rechnet aus, wie viele Minuten pro Tag die wiederkehrenden privaten Aufgaben im Schnitt brauchen: Summe aus Dauer geteilt durch Rhythmus in Tagen. Wochentage zählen als 7 Tage, Monatsregeln als 30,44. Spontane, langfristige und einmalige Aufgaben zählen nicht mit.
 
-Liegt der Bedarf über dem Tageslimit, wächst der Rückstand zwangsläufig. Dann wird die Zahl orange, und ein Link setzt das Limit auf den aufgerundeten Bedarf. Darunter stehen die acht teuersten Aufgaben, bei denen ein längerer Rhythmus am meisten bringt. Die Berechnung läuft komplett im Frontend auf Basis von `GET /tasks`.
+Verglichen wird mit dem Wochenschnitt der Limits, also (5 × Mo–Fr + 2 × Sa–So) / 7. Liegt der Bedarf darüber, wächst der Rückstand zwangsläufig. Dann wird die Zahl orange, und ein Link hebt das Limit für Mo–Fr so weit an, dass der Schnitt den Bedarf deckt. Darunter stehen die acht teuersten Aufgaben, bei denen ein längerer Rhythmus am meisten bringt. Die Berechnung läuft komplett im Frontend auf Basis von `GET /tasks`.
 
 ## Collector
 

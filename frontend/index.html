@@ -123,10 +123,16 @@
             <!-- Konto -->
             <section id="account-section" class="account" hidden>
                 <form id="account-form">
-                    <label class="field">
-                        <span>Tägliches Zeitlimit</span>
-                        <div class="with-unit"><input type="number" id="dailyLimit" min="1" max="240" inputmode="numeric"><span class="mono muted">min</span></div>
-                    </label>
+                    <div class="grid2 keep">
+                        <label class="field">
+                            <span>Zeitlimit Mo–Fr</span>
+                            <div class="with-unit"><input type="number" id="dailyLimit" min="1" max="240" inputmode="numeric"><span class="mono muted">min</span></div>
+                        </label>
+                        <label class="field">
+                            <span>Zeitlimit Sa–So</span>
+                            <div class="with-unit"><input type="number" id="weekendLimit" min="1" max="240" inputmode="numeric"><span class="mono muted">min</span></div>
+                        </label>
+                    </div>
                     <label class="field">
                         <span>Maximal mit Übertrag</span>
                         <div class="with-unit"><input type="number" id="maxLimit" min="1" max="240" inputmode="numeric"><span class="mono muted">min</span></div>

@@ -895,7 +895,7 @@ kbd {
 }
 
 @media (max-width: 420px) {
-    .grid2 { grid-template-columns: 1fr; }
+    .grid2:not(.keep) { grid-template-columns: 1fr; }
 }
 
 /* ---------- Mac: Seitenleiste und zwei Spalten ---------- */

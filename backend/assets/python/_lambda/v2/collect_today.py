@@ -25,6 +25,20 @@ def kontext(t):
     return t.get("kontext", "privat")
 
 
+def base_limit(profile, day):
+    """Tageslimit für einen Tag: Mo–Fr default_duration, Sa–So weekend_duration (falls gesetzt)."""
+    weekday = int(profile.get("default_duration", 15))
+    if day.weekday() >= 5 and profile.get("weekend_duration") is not None:
+        return int(profile["weekend_duration"])
+    return weekday
+
+
+def average_limit(profile):
+    weekday = int(profile.get("default_duration", 15))
+    weekend = int(profile.get("weekend_duration", weekday))
+    return (5 * weekday + 2 * weekend) / 7
+
+
 def interval_days(t):
     """Rhythmus in Tagen: Zahl wie angegeben, Wochentag 7, Monatsregeln 30."""
     regel = t.get("regel") or ""
@@ -98,7 +112,7 @@ def collect_for_user(user_id, nightly):
     if nightly and vac_from and vac_to and today > vac_to:
         shifted = shift_after_vacation(pk, tasks, vac_from, vac_to)
 
-    base = int(profile.get("default_duration", 15))
+    base = base_limit(profile, now.date())
     maximum = int(profile.get("max_duration", 30))
     if nightly:
         # Offen gebliebene private Minuten von gestern wandern auf heute, gedeckelt

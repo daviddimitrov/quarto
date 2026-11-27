@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from boto3.dynamodb.conditions import Attr
 
 import push
-from collect_today import NO_VALUE, collect_for_user, interval_days, query_all, table
+from collect_today import NO_VALUE, average_limit, base_limit, collect_for_user, interval_days, query_all, table
 
 PRIORITIES = {1: "ASAP", 2: "HIGH", 3: "MEDIUM", 4: "LOW"}
 FIELDS = {
@@ -519,11 +519,14 @@ def get_profile_route(p, body):
     prof = get_profile(p["userId"])
     if prof is None:
         return 404, {"message": "User not found"}
-    base = int(prof.get("default_duration", 15))
+    base = base_limit(prof, today())
     maximum = int(prof.get("max_duration", 30))
+    weekday = int(prof.get("default_duration", 15))
     return 200, {
         "name": prof["name"],
-        "dailyLimit": base,
+        "dailyLimit": weekday,
+        "weekendLimit": int(prof.get("weekend_duration", weekday)),
+        "limitToday": base,
         "maxLimit": maximum,
         "budgetToday": min(maximum, max(base, int(prof.get("budget", base)))),
         "doneToday": int(prof.get("done_minutes", 0)) if prof.get("done_date") == today().isoformat() else 0,
@@ -536,11 +539,12 @@ def get_profile_route(p, body):
 def put_profile_route(p, body):
     try:
         daily = int(body.get("dailyLimit"))
+        weekend = int(body.get("weekendLimit", daily))
         maximum = int(body.get("maxLimit"))
     except (TypeError, ValueError):
         return 400, {"message": "Zeitlimits müssen Zahlen sein"}
-    if not (1 <= daily <= 240 and daily <= maximum <= 240):
-        return 400, {"message": "Limits zwischen 1 und 240, Maximum mindestens so groß wie das tägliche Limit"}
+    if not (1 <= daily <= 240 and 1 <= weekend <= 240 and max(daily, weekend) <= maximum <= 240):
+        return 400, {"message": "Limits zwischen 1 und 240, Maximum mindestens so groß wie beide Tageslimits"}
 
     # Urlaub: beide Daten oder keins, leer heißt kein Urlaub
     vac_from = body.get("vacationFrom") or None
@@ -553,11 +557,11 @@ def put_profile_route(p, body):
                 return 400, {"message": "Urlaubsende liegt vor dem Start"}
         except ValueError:
             return 400, {"message": "Urlaubsdaten im Format JJJJ-MM-TT"}
-        expr = "SET default_duration = :d, max_duration = :m, vacation_from = :vf, vacation_to = :vt"
-        values = {":d": daily, ":m": maximum, ":vf": vac_from, ":vt": vac_to}
+        expr = "SET default_duration = :d, weekend_duration = :w, max_duration = :m, vacation_from = :vf, vacation_to = :vt"
+        values = {":d": daily, ":w": weekend, ":m": maximum, ":vf": vac_from, ":vt": vac_to}
     else:
-        expr = "SET default_duration = :d, max_duration = :m REMOVE vacation_from, vacation_to"
-        values = {":d": daily, ":m": maximum}
+        expr = "SET default_duration = :d, weekend_duration = :w, max_duration = :m REMOVE vacation_from, vacation_to"
+        values = {":d": daily, ":w": weekend, ":m": maximum}
     table.update_item(
         Key={"PK": f"USER#{p['userId']}", "SK": "PROFILE"},
         UpdateExpression=expr,
@@ -619,7 +623,7 @@ def redistribute(p, body):
              and i.get("kontext", "privat") == "privat"]
     recurring = [t for t in tasks if not t.get("long_term") and not t.get("spontan") and not t.get("evergreen")]
     demand = sum(int(t.get("duration") or 0) / interval_days(t) for t in recurring if interval_days(t))
-    spare = max(5, int(profile.get("default_duration", 15)) - demand)
+    spare = max(5, average_limit(profile) - demand)
 
     overdue = [t for t in recurring if t.get("due_date") and t["due_date"] < now.isoformat() and t.get("today") != 1]
     overdue.sort(key=lambda t: -(now - date.fromisoformat(t["due_date"])).days / (interval_days(t) or 7))

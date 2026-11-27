@@ -893,7 +893,7 @@ function renderBudget() {
         return;
     }
     const budget = Number(p.budgetToday) || 0;
-    const daily = Number(p.dailyLimit) || budget;
+    const daily = Number(p.limitToday || p.dailyLimit) || budget;
     const carry = Math.max(0, budget - daily);
 
     // Balken = Budget minus offene Minuten. Was nicht verplant ist, zählt von Anfang an als geschafft,
@@ -1058,6 +1058,7 @@ function loadAccount() {
         success: function (p) {
             try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch (e) {}
             $('#dailyLimit').val(p.dailyLimit);
+            $('#weekendLimit').val(p.weekendLimit != null ? p.weekendLimit : p.dailyLimit);
             $('#maxLimit').val(p.maxLimit);
             $('#budgetToday').text(p.budgetToday);
             $('#vacationFrom').val(p.vacationFrom || '');
@@ -1130,14 +1131,18 @@ function renderDemand(tasks) {
         .map(x => ({ ...x, perDay: Number(x.task.duration) / x.days }))
         .sort((a, b) => b.perDay - a.perDay);
     const total = items.reduce((sum, x) => sum + x.perDay, 0);
-    const daily = parseInt($('#dailyLimit').val()) || 0;
-    const needed = Math.ceil(total);
+    // Verglichen wird mit dem Wochenschnitt aus Mo–Fr und Sa–So
+    const weekday = parseInt($('#dailyLimit').val()) || 0;
+    const weekend = parseInt($('#weekendLimit').val()) || weekday;
+    const daily = (5 * weekday + 2 * weekend) / 7;
+    // Mo–Fr-Limit, mit dem der Schnitt den Bedarf deckt
+    const needed = Math.max(weekday, Math.ceil((7 * total - 2 * weekend) / 5));
 
     $('#demand').prop('hidden', items.length === 0);
-    $('#demand-value').text(`${formatMinutes(total)} min/Tag · Limit ${daily}`).toggleClass('overdue', total > daily);
+    $('#demand-value').text(`${formatMinutes(total)} min/Tag · Limit Ø ${formatMinutes(daily)}`).toggleClass('overdue', total > daily);
     if (total > daily) {
-        $('#demand-hint').html(`Rückstand wächst. Limit auf ${needed} erhöhen oder Rhythmen strecken. `
-            + `<button type="button" class="link-btn" id="demand-apply">Limit auf ${needed} setzen</button>`);
+        $('#demand-hint').html(`Rückstand wächst. Limit erhöhen oder Rhythmen strecken. `
+            + `<button type="button" class="link-btn" id="demand-apply">Mo–Fr auf ${needed} setzen</button>`);
     } else {
         $('#demand-hint').text(`Passt. ${formatMinutes(daily - total)} min/Tag Luft für spontane Aufgaben und Rückstand.`);
     }
@@ -1294,6 +1299,7 @@ function saveAccount() {
         dataType: 'json',
         data: JSON.stringify({
             dailyLimit: parseInt($('#dailyLimit').val()),
+            weekendLimit: parseInt($('#weekendLimit').val()) || parseInt($('#dailyLimit').val()),
             maxLimit: parseInt($('#maxLimit').val()),
             vacationFrom: $('#vacationFrom').val() || null,
             vacationTo: $('#vacationTo').val() || null,
@@ -1607,7 +1613,7 @@ function initUi() {
         navigator.clipboard.writeText($('#quickKey').text()).then(() => { btn.textContent = 'Kopiert'; });
     });
     $(document).on('click', '#demand-apply', function () {
-        const value = Math.min(240, Number(this.textContent.replace(/\D/g, '')));
+        const value = Math.min(240, Number(this.textContent.replace(/\D/g, '')));  // die Zahl im Linktext
         $('#dailyLimit').val(value);
         if ((parseInt($('#maxLimit').val()) || 0) < value) $('#maxLimit').val(value);
         saveAccount();
