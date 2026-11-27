@@ -110,7 +110,7 @@ def send(subscription, message):
 # ---------- Abos ----------
 
 def sub_key(user_id, endpoint):
-    return {"PK": f"USER#{user_id}", "SK": "PUSH#" + hashlib.sha256(endpoint.encode()).hexdigest()[:32]}
+    return {"PK": f"USER#{user_id}", "SK": "PUSH#" + device_id(endpoint)}
 
 
 def save_subscription(user_id, subscription):
@@ -124,14 +124,33 @@ def delete_subscription(user_id, endpoint):
     table.delete_item(Key=sub_key(user_id, endpoint))
 
 
-def send_to_user(user_id, message, items=None):
+def device_id(endpoint):
+    """Kennung eines Geräts: dieselben 32 Zeichen wie im SK des Abos, das Frontend rechnet sie genauso."""
+    return hashlib.sha256(endpoint.encode()).hexdigest()[:32]
+
+
+def open_today_count(items):
+    return sum(1 for i in items if i["SK"].startswith("TASK#") and i.get("today") == 1
+               and i.get("kontext", "privat") == "privat")
+
+
+def notify_status(user_id, exclude_device=None):
+    """Nach einer Änderung von außen (Mac, Siri): Stand von Heute als Mitteilung, damit die Zahl am Icon stimmt.
+    Das Gerät, von dem die Änderung kam, bekommt nichts, dort ist die App ja offen."""
+    items = query_all(f"USER#{user_id}")
+    message = open_message(items) or {"title": "Heute alles erledigt", "body": "", "url": APP_URL}
+    return send_to_user(user_id, {**message, "tag": "quarto-status"}, items, exclude_device=exclude_device)
+
+
+def send_to_user(user_id, message, items=None, exclude_device=None):
     """Schickt an alle Geräte des Nutzers. Abgelaufene Abos (404, 410) werden gelöscht."""
     items = items if items is not None else query_all(f"USER#{user_id}")
     # Zahl am App-Icon: offene private Aufgaben von heute, der Service Worker setzt sie
-    message = {**message, "badge": sum(1 for i in items if i["SK"].startswith("TASK#") and i.get("today") == 1
-                                       and i.get("kontext", "privat") == "privat")}
+    message = {**message, "badge": open_today_count(items)}
     sent = 0
     for sub in [i for i in items if i["SK"].startswith("PUSH#")]:
+        if exclude_device and sub["SK"] == f"PUSH#{exclude_device}":
+            continue
         status = send(sub, message)
         if status in (404, 410):
             delete_subscription(user_id, sub["endpoint"])

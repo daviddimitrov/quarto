@@ -8,7 +8,7 @@ self.addEventListener('push', event => {
     const jobs = [self.registration.showNotification(data.title || 'Quarto', {
         body: data.body || '',
         icon: 'assets/images/apple-touch-icon.png',
-        tag: 'quarto-morgen',
+        tag: data.tag || 'quarto',
         data: { url: data.url || './' },
     })];
     // Zahl am App-Icon auch aktualisieren, wenn die App gerade nicht offen ist
