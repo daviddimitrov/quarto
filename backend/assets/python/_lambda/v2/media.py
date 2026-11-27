@@ -56,7 +56,8 @@ def providers_de(data):
     names = []
     for kind in ("flatrate", "free", "ads"):
         for p in de.get(kind) or []:
-            if p.get("provider_name") and p["provider_name"] not in names:
+            # "Apple TV Amazon Channel" und Co. sind derselbe Dienst über Amazon, nur Rauschen
+            if p.get("provider_name") and "Channel" not in p["provider_name"] and p["provider_name"] not in names:
                 names.append(p["provider_name"])
     return names
 
@@ -81,10 +82,17 @@ def search(query):
 
 
 def tv_seasons(tmdb_id):
+    """Staffeln mit Startdatum. Läuft die Serie noch, kommt die nächste Staffel dazu, auch wenn TMDB
+    sie noch nicht kennt. So lassen sich angekündigte Staffeln vormerken, die wöchentliche Prüfung
+    trägt das Datum nach, sobald es bekannt ist."""
     data = tmdb(f"/tv/{tmdb_id}")
-    return [{"season": s["season_number"], "name": s.get("name"), "airDate": s.get("air_date"),
-             "episodes": s.get("episode_count")}
-            for s in data.get("seasons", []) if s.get("season_number", 0) > 0]
+    seasons = [{"season": s["season_number"], "name": s.get("name"), "airDate": s.get("air_date"),
+                "episodes": s.get("episode_count")}
+               for s in data.get("seasons", []) if s.get("season_number", 0) > 0]
+    if data.get("status") not in ("Ended", "Canceled"):
+        nxt = (seasons[-1]["season"] if seasons else 0) + 1
+        seasons.append({"season": nxt, "name": f"Staffel {nxt}", "airDate": None, "episodes": None, "announced": True})
+    return seasons
 
 
 # ---------- Release-Infos ----------
@@ -95,7 +103,9 @@ def movie_info(tmdb_id):
     de = next((c for c in (data.get("release_dates") or {}).get("results", []) if c.get("iso_3166_1") == "DE"), None)
     dates = (de or {}).get("release_dates") or []
     # TMDB-Typen: 2 begrenzt im Kino, 3 Kino, 4 digital, 5 DVD/Blu-ray, 6 TV
-    cinema = min((d["release_date"][:10] for d in dates if d.get("type") in (2, 3)), default=None)
+    # Regulärer Kinostart zählt, begrenzte Starts (Previews, Festivals) nur, wenn es keinen regulären gibt
+    cinema = min((d["release_date"][:10] for d in dates if d.get("type") == 3), default=None) \
+        or min((d["release_date"][:10] for d in dates if d.get("type") == 2), default=None)
     digital = min((d["release_date"][:10] for d in dates if d.get("type") == 4), default=None)
     providers = providers_de(data)
     info = {
@@ -115,8 +125,8 @@ def movie_info(tmdb_id):
     elif digital:
         info.update(releaseDate=digital, where="stream", estimated=False)
     else:
-        # Kein deutsches Datum bekannt: weltweites Datum als Schätzung
-        info.update(releaseDate=data.get("release_date") or None, where="kino", estimated=True)
+        # Kein deutsches Datum: Termin offen. Das weltweite Datum wäre irreführend, der Film läuft hier ja noch nicht
+        info.update(releaseDate=None, where="kino", estimated=True)
     return info
 
 
@@ -128,7 +138,9 @@ def tv_info(tmdb_id, season=None):
     now = today()
     chosen = None
     if season is not None:
-        chosen = next((s for s in seasons if s["season_number"] == int(season)), None)
+        # Angekündigte Staffel, die TMDB noch nicht kennt: vormerken ohne Datum
+        chosen = next((s for s in seasons if s["season_number"] == int(season)), None) \
+            or {"season_number": int(season), "name": f"Staffel {int(season)}"}
     if chosen is None:
         upcoming = [s for s in seasons if not s.get("air_date") or s["air_date"] > now]
         chosen = upcoming[0] if upcoming else (seasons[-1] if seasons else None)

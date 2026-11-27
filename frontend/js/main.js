@@ -1712,7 +1712,7 @@ function chooseSeason(tmdbId, title) {
             const next = seasons.find(s => !s.airDate || daysUntil(s.airDate) > 0) || seasons[seasons.length - 1];
             $('#media-seasons').html(`<div class="small muted">${escapeHtml(title)}: welche Staffel?</div><div class="chips">`
                 + seasons.map(s => `<button type="button" class="chip-btn${next && s.season === next.season ? ' suggested' : ''}" data-id="${tmdbId}" data-season="${s.season}">
-                    Staffel ${s.season}<span class="mono muted">${s.airDate ? fmtDate(s.airDate, true) : 'offen'}</span></button>`).join('')
+                    Staffel ${s.season}<span class="mono muted">${s.airDate ? fmtDate(s.airDate, true) : (s.announced ? 'angekündigt' : 'offen')}</span></button>`).join('')
                 + '</div>');
         },
         error: () => $('#media-seasons').html('<div class="empty">Staffeln nicht erreichbar</div>'),
