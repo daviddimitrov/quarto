@@ -757,6 +757,33 @@ kbd {
 
 .demand-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; font-size: 13px; }
 
+.panel {
+    margin-top: 24px;
+    padding: 14px;
+    background: var(--panel);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+}
+
+.panel p { line-height: 1.5; margin: 6px 0 12px; }
+
+.keybox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 8px 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 12px;
+}
+
+.keybox .mono { flex: 1; min-width: 0; word-break: break-all; user-select: all; -webkit-user-select: all; }
+
+.steps { padding-left: 18px; line-height: 1.6; color: var(--muted); }
+.steps b { color: var(--text); font-weight: 500; }
+.steps .mono { color: var(--text); word-break: break-all; }
+
 /* ---------- Login ---------- */
 
 .login-page {

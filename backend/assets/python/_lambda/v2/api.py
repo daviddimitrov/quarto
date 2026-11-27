@@ -1,7 +1,9 @@
+import hashlib
 import json
 import re
+import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -205,6 +207,109 @@ def collect(p, body):
     return 202, result
 
 
+# ---------- Siri-Kurzbefehl ----------
+
+MONTHS = {"januar": 1, "jänner": 1, "februar": 2, "märz": 3, "april": 4, "mai": 5, "juni": 6, "juli": 7,
+          "august": 8, "september": 9, "oktober": 10, "november": 11, "dezember": 12}
+
+
+def parse_deadline(text, today_date):
+    """'Steuer bis Freitag' -> ('Steuer', Datum). Wie parseDeadline im Frontend, plus Monatsnamen."""
+    m = re.match(r"^(.*\S)\s+bis\s+(?:zum\s+|zur\s+|am\s+)?(.+)$", text, re.IGNORECASE)
+    if not m:
+        return text, None
+    name, when = m.group(1).strip(), m.group(2).strip().lower().rstrip(".")
+    d = None
+    if when == "heute":
+        d = today_date
+    elif when == "morgen":
+        d = today_date + timedelta(days=1)
+    elif when == "übermorgen":
+        d = today_date + timedelta(days=2)
+    elif re.fullmatch(r"[a-zäöü]+", when) and when[:2] in WEEKDAYS:
+        d = today_date + timedelta(days=(WEEKDAYS[when[:2]] - today_date.weekday()) % 7)
+    else:
+        dm = re.fullmatch(r"(\d{1,2})\.\s*(\d{1,2}|[a-zäöü]+)\.?\s*(\d{2}|\d{4})?", when)
+        if dm:
+            month = int(dm.group(2)) if dm.group(2).isdigit() else MONTHS.get(dm.group(2))
+            year = dm.group(3)
+            try:
+                if month:
+                    y = int(year if not year or len(year) == 4 else "20" + year) if year else today_date.year
+                    d = date(y, month, int(dm.group(1)))
+                    if not year and d < today_date:
+                        d = date(y + 1, month, int(dm.group(1)))
+            except ValueError:
+                d = None
+    if d is None:
+        return text, None
+    return name, d
+
+
+def hash_key(key):
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def create_quick_key(p, body):
+    """Erzeugt einen neuen Schlüssel für den Kurzbefehl, der alte wird ungültig. Nur der Hash wird gespeichert."""
+    key = secrets.token_urlsafe(24)
+    table.update_item(
+        Key={"PK": f"USER#{p['userId']}", "SK": "PROFILE"},
+        UpdateExpression="SET quick_key_hash = :h",
+        ExpressionAttributeValues={":h": hash_key(key)},
+        ConditionExpression="attribute_exists(PK)",
+    )
+    _KEY_CACHE.clear()
+    return 201, {"key": key}
+
+
+_KEY_CACHE = {}
+
+
+def user_from_quick_key(key):
+    if not key:
+        return None
+    h = hash_key(key)
+    if h not in _KEY_CACHE:
+        profiles = table.scan(FilterExpression=Attr("SK").eq("PROFILE"))["Items"]
+        match = next((i for i in profiles if secrets.compare_digest(i.get("quick_key_hash", ""), h)), None)
+        _KEY_CACHE[h] = match["PK"].removeprefix("USER#") if match else None
+    return _KEY_CACHE[h]
+
+
+def quick_add(event):
+    """POST /quick vom Kurzbefehl: legt eine einmalige Aufgabe an und antwortet mit Text für Siri."""
+    headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
+    user_id = user_from_quick_key(headers.get("x-quarto-key"))
+    if user_id is None:
+        return 403, "Schlüssel ungültig. Erzeuge in Quarto unter Konto einen neuen."
+    try:
+        body = json.loads(event.get("body") or "{}")
+    except ValueError:
+        body = {"text": event.get("body") or ""}
+    text = str(body.get("text") or "").strip()
+    kontext = "privat"
+    m = re.match(r"^arbeit\b[\s:,.-]*(.*)$", text, re.IGNORECASE)
+    if m:
+        kontext, text = "arbeit", m.group(1).strip()
+    text = text.rstrip(".!? ")
+    if not text:
+        return 400, "Ich habe nichts verstanden."
+    name, deadline = parse_deadline(text, today())
+    name = name[:1].upper() + name[1:]
+    items = [i for i in query_all(f"USER#{user_id}") if i["SK"].startswith("TASK#")]
+    task_id = uuid.uuid4().hex
+    item = {**key(user_id, task_id), "id": task_id, "name": name, "kontext": kontext,
+            "long_term": True, "spontan": False, "today": 0,
+            "ordnung": max((i.get("ordnung", 0) for i in items), default=0) + 1000}
+    if deadline:
+        item["deadline"] = deadline.isoformat()
+    table.put_item(Item=item)
+    where = "Arbeit" if kontext == "arbeit" else "Einmalig"
+    when = f", bis {deadline.day}.{deadline.month}." if deadline else "."
+    return 201, f"{name} steht unter {where}{when}"
+
+
 def create_task(p, body):
     user_id = str(body.get("user_id") or body.get("userId") or "")
     profile = get_profile(user_id)
@@ -379,6 +484,7 @@ ROUTES = {
     "GET /user": list_users,
     "GET /user/{userId}/profile": get_profile_route,
     "PUT /user/{userId}/profile": put_profile_route,
+    "POST /user/{userId}/quick-key": create_quick_key,
     "GET /user/{userId}/tasks": list_tasks,
     "GET /user/{userId}/tasks/today": lambda p, b: list_tasks(p, b, mode="today"),
     "GET /user/{userId}/tasks/long": lambda p, b: list_tasks(p, b, mode="long"),
@@ -395,6 +501,13 @@ ROUTES = {
 
 
 def lambda_handler(event, context):
+    if event.get("routeKey") == "POST /quick":
+        try:
+            status, text = quick_add(event)
+        except Exception as e:
+            print(f"Error: {e}")
+            status, text = 500, "Das hat nicht geklappt."
+        return {"statusCode": status, "headers": {"Content-Type": "text/plain; charset=utf-8"}, "body": text}
     handler = ROUTES.get(event.get("routeKey", ""))
     if handler is None:
         status, payload = 404, {"message": "Route not found"}

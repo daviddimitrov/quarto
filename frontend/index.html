@@ -148,6 +148,22 @@
                         <button type="button" class="btn" id="logoutButton">Logout</button>
                     </div>
                 </form>
+
+                <div class="panel" id="siri">
+                    <div class="demand-head"><i class="bi bi-mic"></i><span>Siri-Kurzbefehl</span></div>
+                    <p class="muted small">„Hey Siri, Quarto“, dann diktieren: <span class="mono">Steuer bis Freitag</span> landet unter Einmalig, <span class="mono">Arbeit Diagramm bis morgen</span> bei Arbeit.</p>
+                    <button type="button" class="btn" id="quickKeyButton">Schlüssel erzeugen</button>
+                    <div id="quickKeyResult" hidden>
+                        <p class="small">Schlüssel, nur jetzt sichtbar. Ein neuer macht den alten ungültig.</p>
+                        <div class="keybox"><span class="mono" id="quickKey"></span><button type="button" class="btn" id="quickKeyCopy">Kopieren</button></div>
+                        <ol class="small steps">
+                            <li>Kurzbefehle-App, neuer Kurzbefehl mit dem Namen <b>Quarto</b></li>
+                            <li>Aktion <b>Nach Eingabe fragen</b>, Text, Frage „Was soll rein?“</li>
+                            <li>Aktion <b>Inhalte von URL abrufen</b> mit der URL <span class="mono" id="quickUrl"></span>, Methode <b>POST</b>, Header <span class="mono">X-Quarto-Key</span> mit dem Schlüssel, Anfragetext <b>JSON</b> mit dem Feld <span class="mono">text</span> = <b>Bereitgestellte Eingabe</b></li>
+                            <li>Aktion <b>Ergebnis anzeigen</b> mit <b>Inhalte von URL</b>, dann sagt Siri, was angelegt wurde</li>
+                        </ol>
+                    </div>
+                </div>
             </section>
         </main>
     </div>

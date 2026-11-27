@@ -167,6 +167,7 @@ Single-Table-Design: Alle Daten eines Nutzers liegen unter einem Partition Key, 
 | `done_minutes` | Zahl | heute erledigte private Minuten |
 | `done_date` | String | Datum, zu dem `done_minutes` gehört, ISO `YYYY-MM-DD` |
 | `vacation_from`, `vacation_to` | String | geplanter Urlaub, beide Tage inklusive |
+| `quick_key_hash` | String | SHA-256 des Schlüssels für den Siri-Kurzbefehl |
 
 ### Aufgabe
 
@@ -219,7 +220,9 @@ Basis-URL: `https://vs7ubni3p3.execute-api.eu-central-1.amazonaws.com/`. Alle Ro
 |---|---|---|
 | `GET /user?user_name=` | `list_users` | Profil zum Namen, liefert die Nutzer-ID |
 | `GET /user/{userId}/profile` | `get_profile_route` | Limits, heutiges Budget, heute erledigte Minuten |
-| `PUT /user/{userId}/profile` | `put_profile_route` | `dailyLimit` und `maxLimit` setzen |
+| `PUT /user/{userId}/profile` | `put_profile_route` | Limits und Urlaub setzen |
+| `POST /user/{userId}/quick-key` | `create_quick_key` | neuen Schlüssel für den Siri-Kurzbefehl erzeugen |
+| `POST /quick` | `quick_add` | Siri-Kurzbefehl, ohne Cognito, siehe unten |
 | `GET /user/{userId}/tasks?kontext=` | `list_tasks` | alle nicht langfristigen Aufgaben, nach Fälligkeit |
 | `GET /user/{userId}/tasks/today?kontext=` | `list_tasks` | Aufgaben mit `today = 1`, nach Ordnung |
 | `GET /user/{userId}/tasks/long?kontext=` | `list_tasks` | langfristige ohne `today`, nach Ordnung |
@@ -271,6 +274,16 @@ Ein PUT ändert nur die mitgeschickten Felder. Das Frontend schickt beim Abhaken
 ```
 
 `PUT` prüft: beide Limits zwischen 1 und 240, Maximum mindestens so groß wie das Tageslimit. Urlaub braucht beide Daten oder keins, das Ende darf nicht vor dem Start liegen; ohne Daten wird ein bestehender Urlaub entfernt. Sonst gibt es 400 mit deutscher Fehlermeldung.
+
+### Siri-Kurzbefehl
+
+`POST /quick` ist die einzige Route ohne JWT-Authorizer, weil ein Kurzbefehl kein Cognito-Token erneuern kann. Stattdessen prüft `api.py` den Header `X-Quarto-Key`:
+
+- Auf der Konto-Seite erzeugt „Schlüssel erzeugen“ einen zufälligen Schlüssel (`secrets.token_urlsafe`). Gespeichert wird nur sein SHA-256-Hash im Profil, der Schlüssel selbst wird genau einmal angezeigt. Ein neuer Schlüssel macht den alten ungültig.
+- Der Kurzbefehl schickt `{"text": "…"}`. Beginnt der Text mit „Arbeit“, wird es eine Arbeitsaufgabe, sonst privat. Danach wird wie im Einmalig-Feld nach `bis …` gesucht. Zusätzlich versteht der Parser Diktatformen wie „bis zum 3. Dezember“ und „bis 15. März 2027“. Satzzeichen am Ende, die Siri anhängt, werden entfernt.
+- Angelegt wird immer eine einmalige Aufgabe. Die Antwort ist reiner Text („Steuer steht unter Einmalig, bis 31.7.“), den der Kurzbefehl anzeigt bzw. Siri vorliest.
+
+Einrichtung in der Kurzbefehle-App: Kurzbefehl „Quarto“ mit den Aktionen *Nach Eingabe fragen* (Text), *Inhalte von URL abrufen* (POST auf `<ApiUrl>/quick`, Header `X-Quarto-Key`, JSON-Feld `text` = *Bereitgestellte Eingabe*) und *Ergebnis anzeigen*. Die Konto-Seite zeigt die Schritte samt URL beim Erzeugen des Schlüssels.
 
 ### Fehler
 
@@ -501,7 +514,7 @@ Typischer Tag:
 2. Aufgaben abhaken, der Balken wächst.
 3. Kleinigkeiten wie Einkaufen oder Wäsche per Evergreen-Chip auf heute holen. Sie verschwinden über Nacht von selbst.
 4. Passt eine Aufgabe heute nicht: „⋯“, Morgen oder Nächste Woche.
-5. Alles Einmalige ins Einmalig-Feld, bei Bedarf mit `bis …`. Wenn Zeit ist, auf Heute ziehen.
+5. Alles Einmalige ins Einmalig-Feld, bei Bedarf mit `bis …`, oder unterwegs per „Hey Siri, Quarto“. Wenn Zeit ist, auf Heute ziehen.
 
 Neue wiederkehrende Aufgaben legt man in Alle an, Rhythmus und Dauer ehrlich schätzen. Die Konto-Seite zeigt danach, ob das Limit noch reicht.
 

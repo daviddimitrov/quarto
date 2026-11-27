@@ -80,6 +80,7 @@ export class ElevenMinutesStack extends cdk.Stack {
     const routes: [string, apigw.HttpMethod[]][] = [
       ['/user', [M.GET]],
       ['/user/{userId}/profile', [M.GET, M.PUT]],
+      ['/user/{userId}/quick-key', [M.POST]],
       ['/user/{userId}/tasks', [M.GET]],
       ['/user/{userId}/tasks/today', [M.GET, M.PATCH]],
       ['/user/{userId}/tasks/long', [M.GET]],
@@ -93,6 +94,9 @@ export class ElevenMinutesStack extends cdk.Stack {
     for (const [path, methods] of routes) {
       api.addRoutes({ path, methods, integration, authorizer });
     }
+
+    // Siri-Kurzbefehl: ohne Cognito, geprüft wird ein eigener Schlüssel in api.py
+    api.addRoutes({ path: '/quick', methods: [M.POST], integration });
 
     new events.Rule(this, 'NightlyCollect', {
       schedule: events.Schedule.cron({ minute: '0', hour: '3' }),

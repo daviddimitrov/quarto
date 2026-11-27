@@ -1118,6 +1118,21 @@ function renderDemand(tasks) {
         + `<span class="mono">${formatMinutes(x.perDay)}</span></div>`).join(''));
 }
 
+function createQuickKey() {
+    if (!window.confirm('Neuen Schlüssel erzeugen? Ein bestehender Kurzbefehl funktioniert dann erst wieder mit dem neuen Schlüssel.')) return;
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/quick-key`,
+        method: 'POST',
+        dataType: 'json',
+        success: function (r) {
+            $('#quickKey').text(r.key);
+            $('#quickUrl').text(apiPrefix + 'quick');
+            $('#quickKeyResult').prop('hidden', false);
+        },
+        error: function () { alert('Schlüssel konnte nicht erzeugt werden.'); },
+    });
+}
+
 function saveAccount() {
     $.ajax({
         url: apiPrefix + `user/${$.cookie('user_id')}/profile`,
@@ -1422,6 +1437,11 @@ function initUi() {
         saveAccount();
     });
     $('#logoutButton').on('click', logout);
+    $('#quickKeyButton').on('click', createQuickKey);
+    $('#quickKeyCopy').on('click', function () {
+        const btn = this;
+        navigator.clipboard.writeText($('#quickKey').text()).then(() => { btn.textContent = 'Kopiert'; });
+    });
     $(document).on('click', '#demand-apply', function () {
         const value = Math.min(240, Number(this.textContent.replace(/\D/g, '')));
         $('#dailyLimit').val(value);
