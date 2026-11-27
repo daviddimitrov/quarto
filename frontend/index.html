@@ -74,7 +74,6 @@
 
             <div class="columns" id="lists">
                 <section class="col-today">
-                    <div id="evergreen-chips" class="chips" hidden></div>
                     <div id="task-list" class="list"></div>
                     <button type="button" class="ghost-btn" id="addTaskButton" hidden><i class="bi bi-plus-lg"></i> Neue Aufgabe</button>
 
@@ -111,6 +110,15 @@
                     <div class="drag-hint key-hint">nach links ziehen = heute</div>
                 </section>
             </div>
+
+            <!-- Evergreens als Chips, nur in Heute -->
+            <section id="evergreen-bar" class="evergreen-bar" hidden>
+                <div class="section-head static">
+                    <span>Evergreens</span>
+                    <span class="rule"></span>
+                </div>
+                <div id="evergreen-chips" class="chips"></div>
+            </section>
 
             <!-- Konto -->
             <section id="account-section" class="account" hidden>
