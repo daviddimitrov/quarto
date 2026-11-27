@@ -58,6 +58,8 @@
             </div>
 
             <!-- Budget, nur in Heute -->
+            <div class="banner" id="vacation-banner" hidden><i class="bi bi-sun"></i><span id="vacation-text"></span></div>
+
             <div class="budget" id="budget" hidden>
                 <div class="mono budget-line" id="budget-line"></div>
                 <div class="bar"><span class="fill"></span><span class="carry"></span></div>
@@ -120,6 +122,16 @@
                         <span>Maximal mit Übertrag</span>
                         <div class="with-unit"><input type="number" id="maxLimit" min="1" max="240" inputmode="numeric"><span class="mono muted">min</span></div>
                     </label>
+                    <div class="grid2">
+                        <label class="field">
+                            <span>Urlaub von</span>
+                            <input type="date" id="vacationFrom">
+                        </label>
+                        <label class="field">
+                            <span>Urlaub bis <button type="button" class="info-btn" data-info="Im Urlaub bleiben Heute und Arbeit leer.<br>In der ersten Nacht danach rücken alle Fälligkeiten um die Urlaubstage nach hinten, Wochentage um volle Wochen. Monatsregeln und Deadlines bleiben.<br>Früher zurück? Enddatum auf gestern setzen." aria-label="Hilfe"><i class="bi bi-info-circle"></i></button></span>
+                            <input type="date" id="vacationTo">
+                        </label>
+                    </div>
                     <p class="muted small">Heutiges Budget: <span class="mono" id="budgetToday">–</span> min</p>
                     <div class="demand" id="demand" hidden>
                         <div class="demand-head">

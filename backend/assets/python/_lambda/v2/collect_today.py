@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import boto3
@@ -50,6 +50,36 @@ def is_starving(t, today_date):
     return overdue_days(t, today_date) >= limit
 
 
+def shift_after_vacation(pk, tasks, vac_from, vac_to):
+    """Schiebt alles, was bis Urlaubsende fällig war, um die Urlaubstage nach hinten.
+
+    Intervalle um genau die Urlaubstage, Wochentage um volle Wochen, damit der Tag
+    stimmt. Monatsregeln bleiben, sie stehen danach höchstens einmal überfällig da.
+    Deadlines einmaliger Aufgaben bleiben, sie sind echte Termine.
+    """
+    days = (date.fromisoformat(vac_to) - date.fromisoformat(vac_from)).days + 1
+    weeks = -(-days // 7) * 7
+    shifted = 0
+    for t in tasks:
+        due = t.get("due_date")
+        regel = t.get("regel") or ""
+        if not due or due > vac_to or t.get("long_term") or t.get("spontan") or regel.startswith("mon"):
+            continue
+        step = weeks if regel.startswith("woche:") else days
+        t["due_date"] = (date.fromisoformat(due) + timedelta(days=step)).isoformat()
+        table.update_item(
+            Key={"PK": pk, "SK": t["SK"]},
+            UpdateExpression="SET due_date = :d",
+            ExpressionAttributeValues={":d": t["due_date"]},
+        )
+        shifted += 1
+    table.update_item(
+        Key={"PK": pk, "SK": "PROFILE"},
+        UpdateExpression="REMOVE vacation_from, vacation_to",
+    )
+    return shifted
+
+
 def collect_for_user(user_id, nightly):
     pk = f"USER#{user_id}"
     items = query_all(pk)
@@ -61,6 +91,13 @@ def collect_for_user(user_id, nightly):
     workday = now.weekday() < 5
     tasks = [i for i in items if i["SK"].startswith("TASK#")]
 
+    # Urlaub: währenddessen bleiben die Listen leer, danach rücken die Fälligkeiten
+    vac_from, vac_to = profile.get("vacation_from"), profile.get("vacation_to")
+    on_vacation = bool(vac_from and vac_to and vac_from <= today <= vac_to)
+    shifted = 0
+    if nightly and vac_from and vac_to and today > vac_to:
+        shifted = shift_after_vacation(pk, tasks, vac_from, vac_to)
+
     base = int(profile.get("default_duration", 15))
     maximum = int(profile.get("max_duration", 30))
     if nightly:
@@ -70,7 +107,7 @@ def collect_for_user(user_id, nightly):
             if kontext(t) == "privat" and t.get("today") == 1
             and not t.get("spontan") and not t.get("long_term")
         )
-        budget = min(maximum, base + open_minutes)
+        budget = base if on_vacation else min(maximum, base + open_minutes)
         table.update_item(
             Key={"PK": pk, "SK": "PROFILE"},
             UpdateExpression="SET budget = :b",
@@ -130,6 +167,9 @@ def collect_for_user(user_id, nightly):
     ]
     chosen.update(t["SK"] for t in deadline_tasks)
 
+    if on_vacation:
+        chosen, total, work, deadline_tasks = set(), 0, [], []
+
     for t in tasks:
         if t.get("spontan") or t.get("evergreen"):
             continue
@@ -141,7 +181,8 @@ def collect_for_user(user_id, nightly):
                 ExpressionAttributeValues={":v": new},
             )
     return {"selected": len(chosen), "minutes": total, "budget": budget,
-            "arbeit": len(work), "deadline": len(deadline_tasks)}
+            "arbeit": len(work), "deadline": len(deadline_tasks),
+            "urlaub": on_vacation, "verschoben": shifted}
 
 
 def response(status, body):

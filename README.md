@@ -166,6 +166,7 @@ Single-Table-Design: Alle Daten eines Nutzers liegen unter einem Partition Key, 
 | `budget` | Zahl | heutiges Budget, vom Collector jede Nacht berechnet |
 | `done_minutes` | Zahl | heute erledigte private Minuten |
 | `done_date` | String | Datum, zu dem `done_minutes` gehört, ISO `YYYY-MM-DD` |
+| `vacation_from`, `vacation_to` | String | geplanter Urlaub, beide Tage inklusive |
 
 ### Aufgabe
 
@@ -265,10 +266,11 @@ Ein PUT ändert nur die mitgeschickten Felder. Das Frontend schickt beim Abhaken
 ### Profil
 
 ```json
-{ "name": "david", "dailyLimit": 15, "maxLimit": 30, "budgetToday": 18, "doneToday": 4 }
+{ "name": "david", "dailyLimit": 15, "maxLimit": 30, "budgetToday": 18, "doneToday": 4,
+  "vacationFrom": "2026-12-20", "vacationTo": "2027-01-03" }
 ```
 
-`PUT` prüft: beide Werte zwischen 1 und 240, Maximum mindestens so groß wie das Tageslimit. Sonst gibt es 400 mit deutscher Fehlermeldung.
+`PUT` prüft: beide Limits zwischen 1 und 240, Maximum mindestens so groß wie das Tageslimit. Urlaub braucht beide Daten oder keins, das Ende darf nicht vor dem Start liegen; ohne Daten wird ein bestehender Urlaub entfernt. Sonst gibt es 400 mit deutscher Fehlermeldung.
 
 ### Fehler
 
@@ -322,6 +324,14 @@ Unteraufgaben werden nie automatisch erledigt, auch wenn alle abgehakt sind. Die
 
 Spontane und langfristige Aufgaben zählen weder zum Budget noch zum Übertrag.
 
+### Urlaub
+
+Auf der Konto-Seite trägt man Urlaub von–bis ein. Er gilt für Privat und Arbeit.
+
+- **Während des Urlaubs** setzt der Collector jede Nacht alle Aufgaben auf `today = 0`. Heute und Arbeit bleiben leer, Deadlines werden nicht hochgeholt, es gibt keinen Übertrag. Heute und Arbeit zeigen einen Hinweis mit dem Enddatum, schon vor dem Urlaub einen mit dem Zeitraum.
+- **In der ersten Nacht danach** rückt `shift_after_vacation` alles nach hinten, was bis zum letzten Urlaubstag fällig war. Intervall-Aufgaben rücken um die Urlaubstage, Wochentagsregeln um volle Wochen, damit der Wochentag stimmt. Monatsregeln bleiben und stehen danach höchstens einmal überfällig da. Deadlines einmaliger Aufgaben bleiben, das sind echte Termine. Danach wird der Urlaub aus dem Profil gelöscht.
+- **Früher zurück:** Enddatum auf gestern setzen, dann wird in der nächsten Nacht um die tatsächlichen Tage verschoben. Wird der Urlaub ganz gelöscht, wird nichts verschoben.
+
 ### Fortschritt
 
 Der Balken auf der Heute-Seite zeigt erledigte Minuten im Verhältnis zum heutigen Budget, zum Beispiel `4 / 18 min · +3 Übertrag`. Er wächst also mit jedem Haken. Sind alle Aufgaben mit Dauer erledigt, ist er voll, auch wenn die geplanten Minuten das Budget nicht ganz ausgeschöpft haben.
@@ -339,14 +349,15 @@ Liegt der Bedarf über dem Tageslimit, wächst der Rückstand zwangsläufig. Dan
 ### Ablauf
 
 1. **Budget:** Nachts werden die offenen privaten Minuten von gestern gezählt: `today = 1`, nicht spontan, nicht langfristig. Daraus wird das neue Budget berechnet und gespeichert. Tagsüber wird das gespeicherte Budget nur gelesen.
-2. **Aufräumen:** Nachts werden alle privaten spontanen To-dos gelöscht.
+2. **Aufräumen:** Nachts werden alle privaten spontanen To-dos gelöscht. Ist ein Urlaub vorbei, werden die Fälligkeiten verschoben, siehe [Urlaub](#urlaub).
 3. **Fällige private Aufgaben:** nicht spontan, nicht langfristig, mit `due_date <= heute`.
 4. **Auswahl privat**, in zwei Durchgängen:
    - **Festhängende zuerst:** Eine Aufgabe hängt fest, wenn sie um ihren eigenen Rhythmus überfällig ist, höchstens aber 7 Tage. Bei „alle 2 Tage“ reichen also 2 Tage, bei „alle 21 Tage“ 7 Tage. Sie werden nach relativem Rückstand sortiert (überfällige Tage geteilt durch Rhythmus). Die erste kommt immer rein, auch wenn sie allein das Budget füllt, die weiteren nur, wenn sie noch passen. Ohne diesen Durchgang kämen große Aufgaben mit niedriger Priorität nie dran, weil kleinere oder wichtigere fast immer vorher das Budget belegen.
    - **Dann der Rest:** sortiert nach Priorität, Fälligkeit und Rhythmus (kurzer Rhythmus zuerst). Jede Aufgabe, die noch ins Budget passt, kommt rein. Danach wird weitergesucht, sodass kleine Aufgaben übrige Minuten auffüllen.
-5. **Arbeit:** an Werktagen alle fälligen Arbeitsaufgaben, ohne Budget.
-6. **Deadlines:** langfristige Aufgaben mit Deadline in höchstens zwei Tagen. Private immer, Arbeit nur an Werktagen, beide ohne Budget.
-7. **Schreiben:** Für jede nicht spontane Aufgabe wird `today` auf 1 oder 0 gesetzt, aber nur wenn sich der Wert ändert. Spontane behalten ihr `today`.
+5. **Urlaub:** Läuft ein Urlaub, bleibt die Auswahl für Privat, Arbeit und Deadlines leer.
+6. **Arbeit:** an Werktagen alle fälligen Arbeitsaufgaben, ohne Budget.
+7. **Deadlines:** langfristige Aufgaben mit Deadline in höchstens zwei Tagen. Private immer, Arbeit nur an Werktagen, beide ohne Budget.
+8. **Schreiben:** Für jede nicht spontane Aufgabe wird `today` auf 1 oder 0 gesetzt, aber nur wenn sich der Wert ändert. Spontane behalten ihr `today`.
 
 Rückgabe: Anzahl ausgewählter Aufgaben, verplante Minuten, Budget, Anzahl Arbeit und Deadline.
 

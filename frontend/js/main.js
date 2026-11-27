@@ -210,6 +210,7 @@ function readRaw(key) {
 // Zeigt sofort den Cache und lädt im Hintergrund den aktuellen Stand
 function loadView(view) {
     const isAccount = view === 'account';
+    renderVacation();
     $('#account-section').prop('hidden', !isAccount);
     $('#lists').prop('hidden', isAccount);
     $('#budget').prop('hidden', view !== 'today');
@@ -868,7 +869,21 @@ function loadBudget() {
     });
 }
 
+// Hinweis in Heute und Arbeit, solange ein Urlaub ansteht oder läuft
+function renderVacation() {
+    const p = readRaw(profileKey());
+    const show = isDayView(currentView) && p && p.vacationFrom && p.vacationTo && daysUntil(p.vacationTo) >= 0;
+    $('#vacation-banner').prop('hidden', !show);
+    if (!show) return;
+    const fmt = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' }); };
+    const days = daysUntil(p.vacationTo) - daysUntil(p.vacationFrom) + 1;
+    $('#vacation-text').text(daysUntil(p.vacationFrom) <= 0
+        ? `Urlaub bis ${fmt(p.vacationTo)}, danach rücken die Fälligkeiten um ${days} Tage`
+        : `Urlaub ab ${fmt(p.vacationFrom)} bis ${fmt(p.vacationTo)}`);
+}
+
 function renderBudget() {
+    renderVacation();
     const p = readRaw(profileKey());
     const open = (readRaw(`quarto_today_privat_${$.cookie('user_id')}`) || [])
         .filter(t => Number(t.duration) > 0);
@@ -1044,6 +1059,8 @@ function loadAccount() {
             $('#dailyLimit').val(p.dailyLimit);
             $('#maxLimit').val(p.maxLimit);
             $('#budgetToday').text(p.budgetToday);
+            $('#vacationFrom').val(p.vacationFrom || '');
+            $('#vacationTo').val(p.vacationTo || '');
             loadDemand();
         },
         error: function () {
@@ -1110,6 +1127,8 @@ function saveAccount() {
         data: JSON.stringify({
             dailyLimit: parseInt($('#dailyLimit').val()),
             maxLimit: parseInt($('#maxLimit').val()),
+            vacationFrom: $('#vacationFrom').val() || null,
+            vacationTo: $('#vacationTo').val() || null,
         }),
         success: function (p) {
             try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch (e) {}

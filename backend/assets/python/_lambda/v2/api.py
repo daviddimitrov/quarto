@@ -321,6 +321,8 @@ def get_profile_route(p, body):
         "maxLimit": maximum,
         "budgetToday": min(maximum, max(base, int(prof.get("budget", base)))),
         "doneToday": int(prof.get("done_minutes", 0)) if prof.get("done_date") == today().isoformat() else 0,
+        "vacationFrom": prof.get("vacation_from"),
+        "vacationTo": prof.get("vacation_to"),
     }
 
 
@@ -332,10 +334,27 @@ def put_profile_route(p, body):
         return 400, {"message": "Zeitlimits müssen Zahlen sein"}
     if not (1 <= daily <= 240 and daily <= maximum <= 240):
         return 400, {"message": "Limits zwischen 1 und 240, Maximum mindestens so groß wie das tägliche Limit"}
+
+    # Urlaub: beide Daten oder keins, leer heißt kein Urlaub
+    vac_from = body.get("vacationFrom") or None
+    vac_to = body.get("vacationTo") or None
+    if bool(vac_from) != bool(vac_to):
+        return 400, {"message": "Urlaub braucht Start- und Enddatum"}
+    if vac_from:
+        try:
+            if datetime.fromisoformat(vac_from).date() > datetime.fromisoformat(vac_to).date():
+                return 400, {"message": "Urlaubsende liegt vor dem Start"}
+        except ValueError:
+            return 400, {"message": "Urlaubsdaten im Format JJJJ-MM-TT"}
+        expr = "SET default_duration = :d, max_duration = :m, vacation_from = :vf, vacation_to = :vt"
+        values = {":d": daily, ":m": maximum, ":vf": vac_from, ":vt": vac_to}
+    else:
+        expr = "SET default_duration = :d, max_duration = :m REMOVE vacation_from, vacation_to"
+        values = {":d": daily, ":m": maximum}
     table.update_item(
         Key={"PK": f"USER#{p['userId']}", "SK": "PROFILE"},
-        UpdateExpression="SET default_duration = :d, max_duration = :m",
-        ExpressionAttributeValues={":d": daily, ":m": maximum},
+        UpdateExpression=expr,
+        ExpressionAttributeValues=values,
         ConditionExpression="attribute_exists(PK)",
     )
     return get_profile_route(p, body)
