@@ -108,6 +108,7 @@ Beide Funktionen nutzen denselben Code-Ordner `assets/python/_lambda/v2`, Python
 | ApiFn | `api.lambda_handler` | 512 MB | 10 s | alle API-Routen |
 | CollectFn | `collect_today.lambda_handler` | 256 MB | 60 s | Nachtlauf |
 | PushFn | `push.lambda_handler` | 256 MB | 60 s | Benachrichtigungen |
+| MediaFn | `media.scheduled_handler` | 256 MB | 5 min | Kino & TV: tägliche Starts, freitags TMDB-Abgleich |
 
 Alle drei bekommen den Layer `CryptoLayer` mit der Bibliothek `cryptography` für Web Push (`assets/python/layer/requirements.txt`). CDK baut ihn beim Deploy lokal per `python3 -m pip install --platform manylinux2014_aarch64 --only-binary=:all:`, Docker ist dafür nicht nötig. Nur wenn das lokale pip scheitert, fällt CDK auf Docker zurück.
 
@@ -127,6 +128,8 @@ Regel `NightlyCollect` mit `cron(0 3 * * ? *)`, also täglich 03:00 UTC. Das ist
 ### EventBridge Scheduler
 
 Schedule `MorningPush` (der Name stammt noch aus der Zeit mit nur einer Uhrzeit) mit `cron(0/15 * * * ? *)` in der Zeitzone `Europe/Berlin`. `push.py` prüft bei jedem Lauf, welche Nutzer für diese Viertelstunde eine Benachrichtigung eingestellt haben. Die Uhrzeiten gelten also immer in deutscher Zeit, auch über die Zeitumstellung hinweg. Ziel ist `PushFn`, der Scheduler ruft sie über die Rolle `MorningPushRole` auf.
+
+Schedule `MediaDaily` mit `cron(0 9 * * ? *)` in `Europe/Berlin` ruft täglich um 9 Uhr `MediaFn` auf, über dieselbe Rolle.
 
 ### SSM Parameter Store
 
@@ -482,6 +485,10 @@ Eigene Seite für Filme und Serien, die man sehen will. Sie ist bewusst getrennt
   - Von den besten 30 bleiben nur Titel, die in Deutschland bei einem Dienst laufen oder einen deutschen Kinostart haben, davon die ersten 10. Die TMDB-Abfragen laufen parallel, `ApiFn` hat dafür 25 Sekunden Zeit.
   - Jede Karte nennt den Grund („Weil du Dune auf der Liste hast“, „Bald im Kino“, „Diese Woche im Trend“). „Hinzufügen“ übernimmt den Titel, bei Serien mit Staffelauswahl. „Nicht interessiert“ blendet ihn für immer aus.
   - Berechnet wird höchstens einmal pro Woche, das Ergebnis liegt in `MEDIA_SUGGEST`. Der Pfeil neben der Überschrift rechnet sofort neu.
+- **Automatische Prüfung** (`scheduled_handler`, täglich 9 Uhr):
+  - Jeden Tag kommt eine Mitteilung für alles Ungeschaute, das heute erscheint, etwa „Heute neu: Severance Staffel 3 bei Apple TV“.
+  - Freitags werden zusätzlich alle ungeschauten Einträge neu bei TMDB abgefragt. Hat sich ein Termin verschoben, ist ein angekündigter Termin dazugekommen oder läuft etwas jetzt bei einem Dienst, steht das mit in der Mitteilung („Neuer Termin: House of the Dragon Staffel 4 ab 14.6.“, „Jetzt verfügbar: … bei Netflix“). Danach werden die Vorschläge neu berechnet.
+  - Gibt es nichts zu melden, kommt nichts. Ein Tipp auf die Mitteilung öffnet Kino & TV.
 
 ### Fortschritt
 
