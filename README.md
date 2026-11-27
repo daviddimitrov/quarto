@@ -347,7 +347,7 @@ Einrichtung in der Kurzbefehle-App: Kurzbefehl „Quarto“ mit den Aktionen *Na
 
 - **Verschlüsselung (RFC 8291, aes128gcm):** pro Nachricht ein neues P-256-Schlüsselpaar, ECDH mit dem Schlüssel des Browsers, HKDF mit dessen `auth`-Secret, AES-128-GCM. Der Body besteht aus Salt, Record-Größe, eigenem öffentlichem Schlüssel und Ciphertext.
 - **Anmeldung (RFC 8292, VAPID):** ein mit ES256 signiertes JWT mit `aud` = Origin des Push-Dienstes, `exp` = 12 Stunden, `sub` = Kontakt-Mail. Dazu der öffentliche Schlüssel im Header `Authorization: vapid t=…, k=…`.
-- **Versand** per `urllib` mit `TTL` 12 Stunden. Ein ausgeschaltetes Handy bekommt die Nachricht also noch bis zum Abend.
+- **Versand** per `urllib` mit `TTL` 12 Stunden und `Urgency: high`, damit Apple sofort zustellt. Mit `normal` darf der Push-Dienst Nachrichten bündeln und um Minuten verzögern. Ein ausgeschaltetes Handy bekommt die Nachricht also noch bis zum Abend.
 
 ### Fehler
 

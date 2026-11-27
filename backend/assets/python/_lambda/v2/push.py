@@ -88,7 +88,7 @@ def vapid_header(endpoint):
     return f"vapid t={jwt}, k={keys['publicKey']}"
 
 
-def send(subscription, message):
+def send(subscription, message, urgency="normal"):
     """Schickt eine Nachricht an ein Abo. Gibt den HTTP-Status zurück."""
     body = encrypt(subscription["keys"]["p256dh"], subscription["keys"]["auth"],
                    json.dumps(message).encode())
@@ -97,7 +97,8 @@ def send(subscription, message):
         "Content-Encoding": "aes128gcm",
         "Content-Type": "application/octet-stream",
         "TTL": "43200",
-        "Urgency": "normal",
+        # "high" stellt sofort zu, "normal" darf Apple bündeln und verzögern, etwa im Stromsparmodus
+        "Urgency": urgency,
     })
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
@@ -139,10 +140,11 @@ def notify_status(user_id, exclude_device=None):
     Das Gerät, von dem die Änderung kam, bekommt nichts, dort ist die App ja offen."""
     items = query_all(f"USER#{user_id}")
     message = open_message(items) or {"title": "Heute alles erledigt", "body": "", "url": APP_URL}
-    return send_to_user(user_id, {**message, "tag": "quarto-status"}, items, exclude_device=exclude_device)
+    return send_to_user(user_id, {**message, "tag": "quarto-status"}, items, exclude_device=exclude_device,
+                        urgency="high")
 
 
-def send_to_user(user_id, message, items=None, exclude_device=None):
+def send_to_user(user_id, message, items=None, exclude_device=None, urgency="high"):
     """Schickt an alle Geräte des Nutzers. Abgelaufene Abos (404, 410) werden gelöscht."""
     items = items if items is not None else query_all(f"USER#{user_id}")
     # Zahl am App-Icon: offene private Aufgaben von heute, der Service Worker setzt sie
@@ -151,7 +153,7 @@ def send_to_user(user_id, message, items=None, exclude_device=None):
     for sub in [i for i in items if i["SK"].startswith("PUSH#")]:
         if exclude_device and sub["SK"] == f"PUSH#{exclude_device}":
             continue
-        status = send(sub, message)
+        status = send(sub, message, urgency)
         if status in (404, 410):
             delete_subscription(user_id, sub["endpoint"])
         elif 200 <= status < 300:
