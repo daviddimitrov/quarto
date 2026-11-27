@@ -127,6 +127,9 @@ def delete_subscription(user_id, endpoint):
 def send_to_user(user_id, message, items=None):
     """Schickt an alle Geräte des Nutzers. Abgelaufene Abos (404, 410) werden gelöscht."""
     items = items if items is not None else query_all(f"USER#{user_id}")
+    # Zahl am App-Icon: offene private Aufgaben von heute, der Service Worker setzt sie
+    message = {**message, "badge": sum(1 for i in items if i["SK"].startswith("TASK#") and i.get("today") == 1
+                                       and i.get("kontext", "privat") == "privat")}
     sent = 0
     for sub in [i for i in items if i["SK"].startswith("PUSH#")]:
         status = send(sub, message)

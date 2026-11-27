@@ -592,6 +592,13 @@ Auf Touch-Geräten sind die Tastenhinweise ausgeblendet.
 
 Auf der Konto-Seite schaltet der Bereich „Benachrichtigungen“ Push pro Gerät ein und aus. Aktivieren fragt die Erlaubnis ab, registriert den Service Worker, abonniert beim Push-Dienst mit dem öffentlichen VAPID-Schlüssel und speichert das Abo. „Test senden“ schickt sofort an alle Geräte.
 
+### Zahl am App-Icon
+
+Das Icon auf dem Homescreen bzw. im Dock zeigt die Zahl offener Aufgaben von Heute, wie bei Mails. iOS erlaubt das für Web-Apps nur, wenn Mitteilungen erlaubt sind.
+
+- **App offen:** Bei jeder Änderung der Heute-Liste setzt `updateBadge` die Zahl per `navigator.setAppBadge`, bei 0 verschwindet sie.
+- **App zu:** Jede Push-Nachricht enthält `badge` mit der aktuellen Zahl, der Service Worker setzt sie beim Empfang. Ohne Nachricht bleibt die Zahl stehen, bis die App wieder geöffnet wird. Nach dem Nachtlauf stimmt sie also erst mit der ersten Benachrichtigung oder beim Öffnen.
+
 ### Cache-Busting
 
 `main.js` und `main.css` werden mit `?v=<commit>` eingebunden. Der Pages-Workflow setzt den Wert bei jedem Deployment auf den Commit-Hash, sodass Browser und PWA die neuen Dateien laden statt alter Kopien.

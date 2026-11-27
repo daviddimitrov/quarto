@@ -5,12 +5,17 @@ self.addEventListener('activate', event => event.waitUntil(self.clients.claim())
 self.addEventListener('push', event => {
     let data = {};
     try { data = event.data ? event.data.json() : {}; } catch (e) { data = { body: event.data && event.data.text() }; }
-    event.waitUntil(self.registration.showNotification(data.title || 'Quarto', {
+    const jobs = [self.registration.showNotification(data.title || 'Quarto', {
         body: data.body || '',
         icon: 'assets/images/apple-touch-icon.png',
         tag: 'quarto-morgen',
         data: { url: data.url || './' },
-    }));
+    })];
+    // Zahl am App-Icon auch aktualisieren, wenn die App gerade nicht offen ist
+    if (typeof data.badge === 'number' && self.navigator.setAppBadge) {
+        jobs.push((data.badge ? self.navigator.setAppBadge(data.badge) : self.navigator.clearAppBadge()).catch(() => {}));
+    }
+    event.waitUntil(Promise.all(jobs));
 });
 
 // Tipp auf die Nachricht öffnet die App oder holt sie nach vorn

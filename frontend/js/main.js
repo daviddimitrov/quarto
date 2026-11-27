@@ -925,6 +925,14 @@ function updateCounts() {
     const work = readRaw(`quarto_work_arbeit_${uid}`);
     $('#count-today').text(today && today.length ? today.length : '');
     $('#count-work').text(work && work.length ? work.length : '');
+    updateBadge(today ? today.length : null);
+}
+
+// Zahl am App-Icon: offene Aufgaben von Heute. iOS erlaubt das nur mit Mitteilungs-Erlaubnis
+function updateBadge(count) {
+    if (count == null || !('setAppBadge' in navigator)) return;
+    if ('Notification' in window && Notification.permission !== 'granted') return;
+    (count ? navigator.setAppBadge(count) : navigator.clearAppBadge()).catch(() => {});
 }
 
 // ---------- Sync zwischen Geräten ----------
