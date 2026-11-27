@@ -229,6 +229,7 @@ function loadView(view) {
     }
     if (isMedia) {
         loadMedia();
+        loadSuggestions(false);
         return;
     }
 
@@ -1680,6 +1681,56 @@ function searchMedia(q) {
     });
 }
 
+function suggestKey() {
+    return `quarto_suggest_${$.cookie('user_id')}`;
+}
+
+function loadSuggestions(force) {
+    const cached = readRaw(suggestKey());
+    if (cached && !force) renderSuggestions(cached);
+    else $('#media-suggestions').html('<div class="empty">Vorschläge werden berechnet …</div>');
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/media/suggestions` + (force ? '?neu=1' : ''),
+        method: 'GET',
+        dataType: 'json',
+        timeout: 30000,
+        success: list => {
+            try { localStorage.setItem(suggestKey(), JSON.stringify(list)); } catch (e) {}
+            if (currentView === 'media') renderSuggestions(list);
+        },
+        error: () => { if (!cached || force) $('#media-suggestions').html('<div class="empty">Vorschläge nicht erreichbar</div>'); },
+    });
+}
+
+function renderSuggestions(list) {
+    if (!list.length) {
+        $('#media-suggestions').html('<div class="empty">Noch keine Vorschläge. Je mehr auf deiner Liste steht, desto besser werden sie.</div>');
+        return;
+    }
+    $('#media-suggestions').html(list.map(s => `
+        <div class="suggest-card" data-type="${s.type}" data-id="${s.tmdbId}" data-genres="${(s.genreIds || []).join(',')}">
+            ${s.poster ? `<img src="${escapeHtml(s.poster)}" alt="" loading="lazy">` : '<div class="media-poster empty"><i class="bi bi-film"></i></div>'}
+            <div class="suggest-body">
+                <div class="media-title">${escapeHtml(s.title)} <span class="muted">${s.year || ''} · ${s.type === 'tv' ? 'Serie' : 'Film'}</span></div>
+                <div class="media-where mono">${escapeHtml(mediaWhere(s))}</div>
+                <div class="suggest-reason">${escapeHtml(s.reason)}</div>
+                <div class="suggest-actions">
+                    <button type="button" class="btn suggest-add"><i class="bi bi-plus-lg"></i> Hinzufügen</button>
+                    <button type="button" class="btn suggest-no">Nicht interessiert</button>
+                </div>
+            </div>
+        </div>`).join(''));
+}
+
+function dropSuggestion(card) {
+    const type = card.getAttribute('data-type');
+    const id = Number(card.getAttribute('data-id'));
+    const rest = (readRaw(suggestKey()) || []).filter(s => !(s.type === type && s.tmdbId === id));
+    try { localStorage.setItem(suggestKey(), JSON.stringify(rest)); } catch (e) {}
+    $(card).remove();
+    if (!rest.length) renderSuggestions(rest);
+}
+
 function addMedia(type, tmdbId, season) {
     $('#media-results, #media-seasons').prop('hidden', true).empty();
     $('#mediaSearch').val('');
@@ -1840,6 +1891,33 @@ function initUi() {
         try { localStorage.setItem('quarto_media_watched_open', $g.hasClass('collapsed') ? '' : '1'); } catch (e) {}
     });
     $('#mediaRefresh').on('click', refreshMedia);
+    $('#suggestRefresh').on('click', () => loadSuggestions(true));
+    $('#media-suggestions').on('click', '.suggest-add', function () {
+        const card = $(this).closest('.suggest-card')[0];
+        const type = card.getAttribute('data-type');
+        const id = Number(card.getAttribute('data-id'));
+        dropSuggestion(card);
+        if (type === 'tv') {
+            chooseSeason(id, $(card).find('.media-title').contents().first().text().trim());
+            $('html, body').animate({ scrollTop: 0 }, 200);
+        } else {
+            addMedia('movie', id);
+        }
+    });
+    $('#media-suggestions').on('click', '.suggest-no', function () {
+        const card = $(this).closest('.suggest-card')[0];
+        $.ajax({
+            url: apiPrefix + `user/${$.cookie('user_id')}/media/dismiss`,
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                type: card.getAttribute('data-type'),
+                tmdbId: Number(card.getAttribute('data-id')),
+                genreIds: (card.getAttribute('data-genres') || '').split(',').filter(Boolean).map(Number),
+            }),
+        });
+        dropSuggestion(card);
+    });
     $('#undo-btn').on('click', undoPending);
     $('#task-form').on('submit', function (event) {
         event.preventDefault();

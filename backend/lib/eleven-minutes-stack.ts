@@ -76,7 +76,8 @@ export class ElevenMinutesStack extends cdk.Stack {
       ...common,
       handler: 'api.lambda_handler',
       memorySize: 512,
-      timeout: cdk.Duration.seconds(10),
+      // Vorschläge fragen TMDB mehrfach ab, das HTTP-API-Limit liegt bei 30 s
+      timeout: cdk.Duration.seconds(25),
     });
 
     const collectFn = new lambda.Function(this, 'CollectFn', {
@@ -159,6 +160,8 @@ export class ElevenMinutesStack extends cdk.Stack {
       ['/media/tv/{tmdbId}/seasons', [M.GET]],
       ['/user/{userId}/media', [M.GET, M.POST]],
       ['/user/{userId}/media/refresh', [M.POST]],
+      ['/user/{userId}/media/suggestions', [M.GET]],
+      ['/user/{userId}/media/dismiss', [M.POST]],
       ['/user/{userId}/media/{mediaId}', [M.DELETE]],
       ['/user/{userId}/media/{mediaId}/watched', [M.PATCH]],
       ['/user/{userId}/tasks', [M.GET]],
