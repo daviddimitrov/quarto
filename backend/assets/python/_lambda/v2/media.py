@@ -58,9 +58,24 @@ def providers_de(data):
         for p in de.get(kind) or []:
             # "Apple TV Amazon Channel" und Co. sind derselbe Dienst über Amazon, nur Rauschen
             name = (p.get("provider_name") or "").removesuffix(" with Ads").strip()
+            name = PROVIDER_ALIASES.get(name, name)
             if name and "Channel" not in name and name not in names:
                 names.append(name)
-    return names
+    # Eigene Abos zuerst, WOW/Sky zuletzt: laufende HBO-Serien gibt es seit Januar 2026 oft bei beiden
+    return sorted(names, key=provider_rank)
+
+
+PROVIDER_ALIASES = {"Max": "HBO Max", "Netflix Standard": "Netflix", "Amazon Prime Video": "Prime Video", "Disney Plus": "Disney+", "Paramount Plus": "Paramount+"}
+PREFERRED = ["HBO Max", "Netflix", "Prime Video", "Disney+", "Apple TV+", "Apple TV", "Paramount+",
+             "ZDF", "ARD Mediathek", "Arte"]
+
+
+def provider_rank(name):
+    if name in PREFERRED:
+        return PREFERRED.index(name)
+    if name in ("WOW", "Sky Go", "Sky"):
+        return 100
+    return 50
 
 
 # ---------- Suche ----------

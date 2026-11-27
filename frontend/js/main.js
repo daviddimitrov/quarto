@@ -1600,7 +1600,7 @@ function fmtDate(iso, withYear) {
 
 // "Apple TV+ · ab 15. Jan. 2027 (voraussichtlich)" oder "Kino ab 17. Dez."
 function mediaWhere(m) {
-    const providers = (m.providers || []).slice(0, 2).join(', ');
+    const providers = (m.providers || []).slice(0, 3).join(', ');
     const date = m.releaseDate ? fmtDate(m.releaseDate) : null;
     const future = m.releaseDate && daysUntil(m.releaseDate) > 0;
     let text;
