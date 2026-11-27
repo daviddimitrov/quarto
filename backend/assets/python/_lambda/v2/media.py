@@ -1,7 +1,8 @@
 """Kino & TV: Filme und Serienstaffeln mit Release-Datum und Streamingdienst in Deutschland.
 
 Die Daten kommen von TMDB (themoviedb.org), die Streaming-Infos dort stammen von JustWatch.
-Der API-Lesezugriffs-Token liegt als SecureString in SSM unter /quarto/tmdb.
+Den API-Lesezugriffs-Token setzt der Deploy-Workflow aus dem GitHub-Secret TMDB_TOKEN als
+Umgebungsvariable. Fehlt sie, wird der SecureString /quarto/tmdb aus SSM gelesen.
 """
 import json
 import os
@@ -23,6 +24,8 @@ _token = None
 
 def token():
     global _token
+    if _token is None and os.environ.get("TMDB_TOKEN"):
+        _token = os.environ["TMDB_TOKEN"].strip()
     if _token is None:
         ssm = boto3.client("ssm")
         _token = ssm.get_parameter(Name=TMDB_PARAM, WithDecryption=True)["Parameter"]["Value"].strip()

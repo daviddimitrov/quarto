@@ -141,13 +141,11 @@ aws ssm put-parameter --name /quarto/vapid --type SecureString --region eu-centr
 
 ### TMDB
 
-`/quarto/tmdb` ist ein SecureString mit dem API-Lesezugriffs-Token von themoviedb.org (Einstellungen → API → „API Read Access Token“). Auch er wird einmalig von Hand angelegt. Den Token vorher in die Zwischenablage kopieren, dann landet er nicht in der Shell-Historie:
+Kino & TV braucht den API-Lesezugriffs-Token von themoviedb.org (Einstellungen → API → „API Read Access Token“). Er liegt als Secret `TMDB_TOKEN` in GitHub (Settings → Secrets and variables → Actions). Der Backend-Workflow gibt ihn beim Deploy als Umgebungsvariable `TMDB_TOKEN` an `ApiFn` und `PushFn` weiter.
 
-```sh
-aws ssm put-parameter --name /quarto/tmdb --type SecureString --region eu-central-1 --value "$(pbpaste)"
-```
+Der Token steht damit im Klartext in der Lambda-Konfiguration und im CloudFormation-Template, sichtbar für jeden mit Zugriff auf das AWS-Konto. Für einen kostenlosen, rein lesenden Token ist das vertretbar, für die VAPID-Schlüssel wäre es das nicht.
 
-`ApiFn` und `PushFn` dürfen ihn lesen.
+Wichtig beim lokalen Deploy: vorher `export TMDB_TOKEN=…` setzen, sonst wird die Variable leer deployt. Dann fällt `media.py` auf den SecureString `/quarto/tmdb` in SSM zurück, falls es ihn gibt, und ohne ihn funktioniert die Suche nicht. Der saubere Weg ist, nur noch über den Workflow zu deployen.
 
 ### Cognito
 

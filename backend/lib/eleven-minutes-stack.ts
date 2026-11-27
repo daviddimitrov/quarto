@@ -62,7 +62,13 @@ export class ElevenMinutesStack extends cdk.Stack {
       runtime: lambda.Runtime.PYTHON_3_13,
       architecture: lambda.Architecture.ARM_64,
       code: lambda.Code.fromAsset('assets/python/_lambda/v2'),
-      environment: { TABLE_NAME: table.tableName, VAPID_PARAM: '/quarto/vapid', TMDB_PARAM: '/quarto/tmdb' },
+      environment: {
+        TABLE_NAME: table.tableName,
+        VAPID_PARAM: '/quarto/vapid',
+        TMDB_PARAM: '/quarto/tmdb',
+        // Kommt beim Deploy aus dem GitHub-Secret TMDB_TOKEN, lokal per export TMDB_TOKEN=...
+        TMDB_TOKEN: process.env.TMDB_TOKEN ?? '',
+      },
       layers: [cryptoLayer],
     };
 
