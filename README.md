@@ -658,6 +658,12 @@ Ein Push auf `main` mit Änderungen in `backend/` oder am Workflow startet `.git
 
 Weil der Workflow nicht nachfragt, gehen auch IAM-Änderungen ohne Bestätigung raus. Wer Backend-Änderungen merged, deployt sie also.
 
+**Sicherheit:** In GitHub liegen keine AWS-Schlüssel. Die Rolle `quarto-github-deploy` lässt sich nur von Workflows auf `main` dieses Repos übernehmen und darf nur die CDK-Bootstrap-Rollen übernehmen. Deren Ausführungsrolle hat aber Administratorrechte, wer Code auf `main` bringt, kann also im ganzen AWS-Konto alles tun. Deshalb:
+
+- Zwei-Faktor-Anmeldung auf dem GitHub-Konto
+- Ruleset für `main`: Löschen und Force-Push verboten
+- Alle Actions sind auf Commit-Hashes gepinnt statt auf Tags wie `@v4`, die ein Angreifer umbiegen könnte. Die Version steht als Kommentar dahinter. Zum Aktualisieren den neuen Commit des gewünschten Tags eintragen, etwa per `git ls-remote --tags https://github.com/actions/checkout`.
+
 Einmalige Einrichtung in AWS, lokal mit Admin-Zugang:
 
 ```sh
