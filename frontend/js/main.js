@@ -1097,7 +1097,32 @@ function loadDemand() {
     });
 }
 
+function renderBacklog(tasks) {
+    const overdue = (tasks || []).filter(t => !t.spontan && !t.longTerm && !t.evergreen && t.today !== 1
+        && t.dueDate && daysUntil(t.dueDate) < 0);
+    const minutes = overdue.reduce((sum, t) => sum + (Number(t.duration) || 0), 0);
+    $('#backlog').prop('hidden', overdue.length === 0);
+    $('#backlog-text').text(`${overdue.length} überfällig · ${minutes} min. Neu verteilen legt sie gleichmäßig auf die nächsten Tage, so viel wie neben dem Bedarf ins Limit passt.`);
+}
+
+function redistribute() {
+    if (!window.confirm('Überfällige Aufgaben auf die nächsten Tage verteilen?')) return;
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/redistribute`,
+        method: 'POST',
+        dataType: 'json',
+        success: r => {
+            const until = r.until ? new Date(r.until).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' }) : '';
+            showAccountMessage(r.moved ? `${r.moved} Aufgaben bis ${until} verteilt.` : 'Nichts überfällig.', true);
+            try { localStorage.removeItem(`quarto_all_privat_${$.cookie('user_id')}`); } catch (e) {}
+            loadDemand();
+        },
+        error: () => showAccountMessage('Verteilen hat nicht geklappt.', false),
+    });
+}
+
 function renderDemand(tasks) {
+    renderBacklog(tasks);
     const items = (tasks || [])
         .filter(t => !t.spontan && !t.longTerm && Number(t.duration) > 0)
         .map(t => ({ task: t, days: intervalDays(t.rhythm) }))
@@ -1570,6 +1595,7 @@ function initUi() {
     $('#pushEnable').on('click', enablePush);
     $('#pushDisable').on('click', disablePush);
     $('#pushTest').on('click', testPush);
+    $('#redistributeButton').on('click', redistribute);
     $('#notifAdd').on('click', function () {
         $('#notif-list > p').remove();
         $('#notif-list').append(notifRow({ time: '19:00', days: 'taeglich', kind: 'offen' }));

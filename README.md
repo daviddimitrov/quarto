@@ -267,6 +267,7 @@ Basis-URL: `https://vs7ubni3p3.execute-api.eu-central-1.amazonaws.com/`. Alle Ro
 | `POST /user/{userId}/push` | `push_subscribe` | Push-Abo speichern, Body `{"subscription": …}` |
 | `DELETE /user/{userId}/push` | `push_unsubscribe` | Push-Abo löschen, Body `{"endpoint": …}` |
 | `POST /user/{userId}/push/test` | `push_test` | sofort an alle Geräte senden: Morgennachricht oder ein Testtext |
+| `POST /user/{userId}/redistribute` | `redistribute` | überfällige private Aufgaben auf die kommenden Tage verteilen |
 | `PUT /user/{userId}/notifications` | `put_notifications` | Benachrichtigungen speichern, Body `{"notifications": [...]}` |
 | `GET /user/{userId}/tasks?kontext=` | `list_tasks` | alle nicht langfristigen Aufgaben, nach Fälligkeit |
 | `GET /user/{userId}/tasks/today?kontext=` | `list_tasks` | Aufgaben mit `today = 1`, nach Ordnung |
@@ -399,6 +400,17 @@ Unteraufgaben werden nie automatisch erledigt, auch wenn alle abgehakt sind. Die
 - **Maximum** (`max_duration`): Deckel für das Budget mit Übertrag.
 
 Spontane und langfristige Aufgaben zählen weder zum Budget noch zum Übertrag.
+
+### Rückstand neu verteilen
+
+Liegt mehr überfällig, als der Puffer zwischen Bedarf und Limit in absehbarer Zeit abbaut, zeigt die Konto-Seite unter dem Bedarf die Anzahl überfälliger Aufgaben und ihre Minuten, dazu den Knopf „Neu verteilen“. `redistribute`:
+
+- nimmt alle überfälligen privaten wiederkehrenden Aufgaben, die nicht schon heute auf der Liste stehen
+- sortiert sie nach relativem Rückstand, also überfälligen Tagen geteilt durch Rhythmus
+- verteilt sie ab morgen auf die folgenden Tage: Pro Tag kommt höchstens so viel dazu, wie das Tageslimit über dem Bedarf frei lässt, mindestens 5 Minuten. Eine größere Aufgabe bekommt einen Tag für sich.
+- setzt dafür nur `due_date`. Ab dem neuen Tag ist die Aufgabe normal fällig und läuft durch den Collector.
+
+Nichts gilt als erledigt, nur die Fälligkeiten rücken. Bei Wochentags- und Monatsregeln stimmt der Tag dadurch einmal nicht, nach dem nächsten Erledigen wieder. Der Knopf lässt sich jederzeit erneut drücken, zum Beispiel nach Krankheit.
 
 ### Urlaub
 
@@ -588,6 +600,8 @@ Auf der Konto-Seite schaltet der Bereich „Benachrichtigungen“ Push pro Gerä
 
 - **iPhone:** Safari, Teilen, „Zum Home-Bildschirm“. Die Meta-Tags sorgen für Vollbild, dunkle Statusleiste und das Apple-Touch-Icon.
 - **Mac:** Safari, Ablage, „Zum Dock hinzufügen“.
+
+Die Statusleiste ist mit der Hintergrundfarbe abgedeckt (`.app::before` mit `env(safe-area-inset-top)`), damit beim Scrollen nichts unter Uhrzeit und Akku läuft.
 
 Homescreen- und Dock-Apps haben eigenen Speicher, getrennt von Safari. Nach dem Hinzufügen muss man sich dort einmal neu einloggen.
 

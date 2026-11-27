@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from boto3.dynamodb.conditions import Attr
 
 import push
-from collect_today import NO_VALUE, collect_for_user, query_all, table
+from collect_today import NO_VALUE, collect_for_user, interval_days, query_all, table
 
 PRIORITIES = {1: "ASAP", 2: "HIGH", 3: "MEDIUM", 4: "LOW"}
 FIELDS = {
@@ -603,6 +603,43 @@ def push_unsubscribe(p, body):
     return 200, {"ok": True}
 
 
+def redistribute(p, body):
+    """Verteilt überfällige private Aufgaben auf die kommenden Tage.
+
+    Pro Tag kommt höchstens so viel dazu, wie das Tageslimit über dem Bedarf frei lässt
+    (mindestens 5 Minuten). Die relativ am längsten überfälligen kommen zuerst dran.
+    Aufgaben, die heute schon auf der Liste stehen, bleiben, wie sie sind.
+    """
+    user_id = p["userId"]
+    profile = get_profile(user_id)
+    if profile is None:
+        return 404, {"message": "User not found"}
+    now = today()
+    tasks = [i for i in query_all(f"USER#{user_id}") if i["SK"].startswith("TASK#")
+             and i.get("kontext", "privat") == "privat"]
+    recurring = [t for t in tasks if not t.get("long_term") and not t.get("spontan") and not t.get("evergreen")]
+    demand = sum(int(t.get("duration") or 0) / interval_days(t) for t in recurring if interval_days(t))
+    spare = max(5, int(profile.get("default_duration", 15)) - demand)
+
+    overdue = [t for t in recurring if t.get("due_date") and t["due_date"] < now.isoformat() and t.get("today") != 1]
+    overdue.sort(key=lambda t: -(now - date.fromisoformat(t["due_date"])).days / (interval_days(t) or 7))
+
+    load = {}
+    last = now
+    for t in overdue:
+        minutes = int(t.get("duration") or 0)
+        day = 1
+        # Erster Tag, an dem die Aufgabe noch in den freien Platz passt; zu große bekommen einen Tag für sich
+        while not (load.get(day, 0) + minutes <= spare or load.get(day, 0) == 0):
+            day += 1
+        load[day] = load.get(day, 0) + minutes
+        due = now + timedelta(days=day)
+        last = max(last, due)
+        table.update_item(Key=key(user_id, t["id"]), UpdateExpression="SET due_date = :d",
+                          ExpressionAttributeValues={":d": due.isoformat()})
+    return 200, {"moved": len(overdue), "until": last.isoformat() if overdue else None}
+
+
 def put_notifications(p, body):
     """Benachrichtigungen pro Nutzer: Uhrzeit in 15-Minuten-Schritten, Tage, Inhalt."""
     items = body.get("notifications")
@@ -646,6 +683,7 @@ ROUTES = {
     "DELETE /user/{userId}/push": push_unsubscribe,
     "POST /user/{userId}/push/test": push_test,
     "PUT /user/{userId}/notifications": put_notifications,
+    "POST /user/{userId}/redistribute": redistribute,
     "GET /user/{userId}/tasks": list_tasks,
     "GET /user/{userId}/tasks/today": lambda p, b: list_tasks(p, b, mode="today"),
     "GET /user/{userId}/tasks/long": lambda p, b: list_tasks(p, b, mode="long"),
