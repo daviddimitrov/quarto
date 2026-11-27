@@ -506,7 +506,7 @@ def push_test(p, body):
     items = query_all(f"USER#{p['userId']}")
     today_iso = today().isoformat()
     message = push.morning_message(items, today_iso) or {
-        "title": "Quarto", "body": "Benachrichtigungen funktionieren. Heute steht nichts mit ASAP oder Deadline an.",
+        "title": "Testnachricht", "body": "Funktioniert. Heute steht nichts mit ASAP oder Deadline an.",
         "url": push.APP_URL}
     return 200, {"sent": push.send_to_user(p["userId"], message, items)}
 

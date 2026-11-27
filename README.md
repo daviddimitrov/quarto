@@ -404,7 +404,7 @@ Täglich 7:30 Uhr geht pro Nutzer eine Mitteilung an alle Geräte mit Push-Abo, 
 - **Deadline heute:** einmalige Aufgaben mit Deadline heute
 - **Deadline verpasst:** einmalige Aufgaben mit Deadline in der Vergangenheit
 
-Steht nichts an oder ist Urlaub, kommt nichts. Ein Tipp auf die Mitteilung öffnet Quarto.
+Die erste Zeile ist der Titel, der Rest der Text. iOS zeigt den App-Namen selbst an („… from Quarto“), deshalb steht im Titel nicht noch einmal „Quarto“. Steht nichts an oder ist Urlaub, kommt nichts. Ein Tipp auf die Mitteilung öffnet Quarto.
 
 ### Fortschritt
 

@@ -158,7 +158,8 @@ def morning_message(items, today):
             lines.append("Deadline verpasst: " + ", ".join(late_names))
     if not lines:
         return None
-    return {"title": "Quarto heute", "body": "\n".join(lines), "url": APP_URL}
+    # iOS hängt den App-Namen selbst an ("… from Quarto"), deshalb steht der wichtigste Punkt im Titel
+    return {"title": lines[0], "body": "\n".join(lines[1:]), "url": APP_URL}
 
 
 def lambda_handler(event, context):
