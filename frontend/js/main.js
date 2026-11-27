@@ -170,6 +170,7 @@ const VIEWS = {
     work:    { title: 'Arbeit', hash: '#arbeit' },
     all:     { title: 'Alle',   hash: '#alle' },
     account: { title: 'Konto',  hash: '#konto' },
+    media:   { title: 'Kino & TV', hash: '#kino' },
 };
 
 function setView(view) {
@@ -213,15 +214,21 @@ function readRaw(key) {
 // Zeigt sofort den Cache und lädt im Hintergrund den aktuellen Stand
 function loadView(view) {
     const isAccount = view === 'account';
+    const isMedia = view === 'media';
     renderVacation();
     $('#account-section').prop('hidden', !isAccount);
-    $('#lists').prop('hidden', isAccount);
+    $('#media-section').prop('hidden', !isMedia);
+    $('#lists').prop('hidden', isAccount || isMedia);
     $('#budget').prop('hidden', view !== 'today');
     $('#kontext-toggle').prop('hidden', view !== 'all');
     // Liegt außerhalb von #lists, muss also auch im Konto ausgeblendet werden
     $('#evergreen-bar').prop('hidden', view !== 'today');
     if (isAccount) {
         loadAccount();
+        return;
+    }
+    if (isMedia) {
+        loadMedia();
         return;
     }
 
@@ -1563,6 +1570,202 @@ function renameEvergreen(id) {
     putTask(id, { name: name });
 }
 
+// ---------- Kino & TV ----------
+
+function mediaKey() {
+    return `quarto_media_${$.cookie('user_id')}`;
+}
+
+function loadMedia() {
+    const cached = readRaw(mediaKey());
+    if (cached) renderMedia(cached);
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/media`,
+        method: 'GET',
+        dataType: 'json',
+        success: items => {
+            try { localStorage.setItem(mediaKey(), JSON.stringify(items)); } catch (e) {}
+            if (currentView === 'media') renderMedia(items);
+        },
+    });
+}
+
+function fmtDate(iso, withYear) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const opts = { day: 'numeric', month: 'short' };
+    if (withYear || y !== new Date().getFullYear()) opts.year = 'numeric';
+    return new Date(y, m - 1, d).toLocaleDateString('de-DE', opts);
+}
+
+// "Apple TV+ · ab 15. Jan. 2027 (voraussichtlich)" oder "Kino ab 17. Dez."
+function mediaWhere(m) {
+    const providers = (m.providers || []).slice(0, 2).join(', ');
+    const date = m.releaseDate ? fmtDate(m.releaseDate) : null;
+    const future = m.releaseDate && daysUntil(m.releaseDate) > 0;
+    let text;
+    if (m.where === 'kino' && !providers) {
+        text = !date ? 'Kino, Termin offen' : (future ? `Kino ab ${date}` : `im Kino seit ${date}`);
+    } else if (future) {
+        text = `${providers ? providers + ' · ' : ''}ab ${date}`;
+    } else {
+        text = providers || (date ? `erschienen ${date}` : 'Termin offen');
+    }
+    return text + (m.estimated && future ? ' · voraussichtlich' : '');
+}
+
+function mediaRow(m) {
+    const label = m.type === 'tv' && m.season ? `Staffel ${m.season}` : (m.type === 'movie' ? 'Film' : 'Serie');
+    return `<div class="media-row${m.watched ? ' watched' : ''}" data-id="${escapeHtml(m.id)}">
+        <button type="button" class="check media-check" aria-label="Geschaut"><i class="bi bi-check"></i></button>
+        ${m.poster ? `<img class="media-poster" src="${escapeHtml(m.poster)}" alt="" loading="lazy">` : '<div class="media-poster empty"><i class="bi bi-film"></i></div>'}
+        <div class="media-main">
+            <div class="media-title">${escapeHtml(m.title)} <span class="muted">${label}</span></div>
+            <div class="media-where mono">${escapeHtml(mediaWhere(m))}</div>
+        </div>
+        ${m.available ? '<span class="chip ok">verfügbar</span>' : ''}
+        <button type="button" class="more media-delete" aria-label="Entfernen"><i class="bi bi-x-lg"></i></button>
+    </div>`;
+}
+
+function renderMedia(items) {
+    const byDate = (a, b) => (a.releaseDate || '9999').localeCompare(b.releaseDate || '9999');
+    const groups = [
+        ['Jetzt verfügbar', items.filter(m => m.available).sort(byDate).reverse()],
+        ['Demnächst', items.filter(m => !m.watched && m.releaseDate && daysUntil(m.releaseDate) > 0).sort(byDate)],
+        ['Termin offen', items.filter(m => !m.watched && !m.releaseDate)],
+        ['Geschaut', items.filter(m => m.watched).sort(byDate).reverse()],
+    ];
+    const open = items.filter(m => m.available).length;
+    $('#count-media').text(open || '');
+    if (!items.length) {
+        $('#media-groups').html('<div class="empty">Noch nichts eingetragen. Oben nach einem Film oder einer Serie suchen.</div>');
+        return;
+    }
+    const watchedOpen = localStorage.getItem('quarto_media_watched_open') === '1';
+    $('#media-groups').html(groups.filter(([, list]) => list.length).map(([name, list]) => {
+        const collapsible = name === 'Geschaut';
+        return `<section class="media-group${collapsible && !watchedOpen ? ' collapsed' : ''}">
+            <button type="button" class="section-head${collapsible ? ' media-toggle' : ' static'}">
+                <span>${name}</span><span class="mono muted">${list.length}</span><span class="rule"></span>
+                ${collapsible ? '<i class="bi bi-chevron-down chevron"></i>' : ''}
+            </button>
+            <div class="media-list">${list.map(mediaRow).join('')}</div>
+        </section>`;
+    }).join(''));
+}
+
+let mediaSearchTimer = null;
+let mediaSearchSeq = 0;
+
+function searchMedia(q) {
+    const seq = ++mediaSearchSeq;
+    if (q.trim().length < 2) {
+        $('#media-results').prop('hidden', true).empty();
+        return;
+    }
+    $.ajax({
+        url: apiPrefix + 'media/search?q=' + encodeURIComponent(q.trim()),
+        method: 'GET',
+        dataType: 'json',
+        success: results => {
+            if (seq !== mediaSearchSeq) return;  // ältere Antwort, inzwischen weitergetippt
+            $('#media-results').prop('hidden', false).html(results.length ? results.map(r =>
+                `<button type="button" class="media-result" data-type="${r.type}" data-id="${r.tmdbId}">
+                    ${r.poster ? `<img src="${escapeHtml(r.poster)}" alt="" loading="lazy">` : '<span class="media-poster empty"><i class="bi bi-film"></i></span>'}
+                    <span class="media-result-title">${escapeHtml(r.title)}</span>
+                    <span class="mono muted">${r.year || ''} · ${r.type === 'tv' ? 'Serie' : 'Film'}</span>
+                </button>`).join('') : '<div class="empty">Nichts gefunden</div>');
+        },
+        error: () => $('#media-results').prop('hidden', false).html('<div class="empty">Suche nicht erreichbar</div>'),
+    });
+}
+
+function addMedia(type, tmdbId, season) {
+    $('#media-results, #media-seasons').prop('hidden', true).empty();
+    $('#mediaSearch').val('');
+    $('#mediaMessage').text('Wird hinzugefügt …');
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/media`,
+        method: 'POST',
+        contentType: 'application/json',
+        dataType: 'json',
+        data: JSON.stringify({ type, tmdbId, season }),
+        success: m => {
+            const items = (readRaw(mediaKey()) || []).filter(x => x.id !== m.id).concat([m]);
+            try { localStorage.setItem(mediaKey(), JSON.stringify(items)); } catch (e) {}
+            renderMedia(items);
+            $('#mediaMessage').text(`${m.title} hinzugefügt.`);
+        },
+        error: xhr => $('#mediaMessage').text((xhr.responseJSON && xhr.responseJSON.message) || 'Hinzufügen hat nicht geklappt.'),
+    });
+}
+
+// Bei Serien erst die Staffel wählen, die nächste kommende ist vorausgewählt
+function chooseSeason(tmdbId, title) {
+    $('#media-results').prop('hidden', true);
+    $('#media-seasons').prop('hidden', false).html('<div class="empty">Staffeln werden geladen …</div>');
+    $.ajax({
+        url: apiPrefix + `media/tv/${tmdbId}/seasons`,
+        method: 'GET',
+        dataType: 'json',
+        success: seasons => {
+            const next = seasons.find(s => !s.airDate || daysUntil(s.airDate) > 0) || seasons[seasons.length - 1];
+            $('#media-seasons').html(`<div class="small muted">${escapeHtml(title)}: welche Staffel?</div><div class="chips">`
+                + seasons.map(s => `<button type="button" class="chip-btn${next && s.season === next.season ? ' suggested' : ''}" data-id="${tmdbId}" data-season="${s.season}">
+                    Staffel ${s.season}<span class="mono muted">${s.airDate ? fmtDate(s.airDate, true) : 'offen'}</span></button>`).join('')
+                + '</div>');
+        },
+        error: () => $('#media-seasons').html('<div class="empty">Staffeln nicht erreichbar</div>'),
+    });
+}
+
+function toggleWatched(id) {
+    const items = readRaw(mediaKey()) || [];
+    const m = items.find(x => x.id === id);
+    if (m) {
+        m.watched = !m.watched;
+        m.available = !m.watched && !!m.releaseDate && daysUntil(m.releaseDate) <= 0;
+        try { localStorage.setItem(mediaKey(), JSON.stringify(items)); } catch (e) {}
+        renderMedia(items);
+    }
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/media/${encodeURIComponent(id)}/watched`,
+        method: 'PATCH',
+        error: () => { alert('Konnte nicht gespeichert werden.'); loadMedia(); },
+    });
+}
+
+function deleteMedia(id) {
+    const items = readRaw(mediaKey()) || [];
+    const m = items.find(x => x.id === id);
+    if (!window.confirm(`${m ? m.title : 'Eintrag'} entfernen?`)) return;
+    const rest = items.filter(x => x.id !== id);
+    try { localStorage.setItem(mediaKey(), JSON.stringify(rest)); } catch (e) {}
+    renderMedia(rest);
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/media/${encodeURIComponent(id)}`,
+        method: 'DELETE',
+        error: () => { alert('Konnte nicht entfernt werden.'); loadMedia(); },
+    });
+}
+
+function refreshMedia() {
+    $('#mediaMessage').text('Daten werden bei TMDB abgefragt …');
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/media/refresh`,
+        method: 'POST',
+        dataType: 'json',
+        success: r => {
+            try { localStorage.setItem(mediaKey(), JSON.stringify(r.items)); } catch (e) {}
+            renderMedia(r.items);
+            $('#mediaMessage').text(r.changes.length
+                ? 'Geändert: ' + r.changes.map(c => c.title + (c.season ? ` S${c.season}` : '')).join(', ')
+                : 'Alles aktuell.');
+        },
+        error: () => $('#mediaMessage').text('Aktualisieren hat nicht geklappt.'),
+    });
+}
+
 // ---------- Helfer ----------
 
 function escapeHtml(text) {
@@ -1609,6 +1812,34 @@ function initUi() {
     });
 
     $('#addTaskButton').on('click', openNewTask);
+
+    // Kino & TV
+    $('#mediaSearch').on('input', function () {
+        clearTimeout(mediaSearchTimer);
+        $('#media-seasons').prop('hidden', true).empty();
+        const q = this.value;
+        mediaSearchTimer = setTimeout(() => searchMedia(q), 300);
+    });
+    $('#media-results').on('click', '.media-result', function () {
+        const type = this.getAttribute('data-type');
+        const id = Number(this.getAttribute('data-id'));
+        if (type === 'tv') chooseSeason(id, $(this).find('.media-result-title').text());
+        else addMedia('movie', id);
+    });
+    $('#media-seasons').on('click', '.chip-btn', function () {
+        addMedia('tv', Number(this.getAttribute('data-id')), Number(this.getAttribute('data-season')));
+    });
+    $('#media-groups').on('click', '.media-check', function () {
+        toggleWatched($(this).closest('.media-row').attr('data-id'));
+    });
+    $('#media-groups').on('click', '.media-delete', function () {
+        deleteMedia($(this).closest('.media-row').attr('data-id'));
+    });
+    $('#media-groups').on('click', '.media-toggle', function () {
+        const $g = $(this).closest('.media-group').toggleClass('collapsed');
+        try { localStorage.setItem('quarto_media_watched_open', $g.hasClass('collapsed') ? '' : '1'); } catch (e) {}
+    });
+    $('#mediaRefresh').on('click', refreshMedia);
     $('#undo-btn').on('click', undoPending);
     $('#task-form').on('submit', function (event) {
         event.preventDefault();

@@ -48,6 +48,11 @@ export class ElevenMinutesStack extends cdk.Stack {
       }),
     });
 
+    // TMDB-Lesezugriffs-Token für Kino & TV, einmalig von Hand angelegt (siehe README)
+    const tmdbToken = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'Tmdb', {
+      parameterName: '/quarto/tmdb',
+    });
+
     // VAPID-Schlüssel, einmalig von Hand angelegt (siehe README)
     const vapid = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'Vapid', {
       parameterName: '/quarto/vapid',
@@ -57,7 +62,7 @@ export class ElevenMinutesStack extends cdk.Stack {
       runtime: lambda.Runtime.PYTHON_3_13,
       architecture: lambda.Architecture.ARM_64,
       code: lambda.Code.fromAsset('assets/python/_lambda/v2'),
-      environment: { TABLE_NAME: table.tableName, VAPID_PARAM: '/quarto/vapid' },
+      environment: { TABLE_NAME: table.tableName, VAPID_PARAM: '/quarto/vapid', TMDB_PARAM: '/quarto/tmdb' },
       layers: [cryptoLayer],
     };
 
@@ -86,6 +91,8 @@ export class ElevenMinutesStack extends cdk.Stack {
     table.grantReadWriteData(collectFn);
     table.grantReadWriteData(pushFn);
     vapid.grantRead(apiFn);
+    tmdbToken.grantRead(apiFn);
+    tmdbToken.grantRead(pushFn);
     vapid.grantRead(pushFn);
 
     // Benachrichtigungen nach deutscher Zeit, Sommerzeit inklusive
@@ -142,6 +149,12 @@ export class ElevenMinutesStack extends cdk.Stack {
       ['/user/{userId}/push/test', [M.POST]],
       ['/user/{userId}/notifications', [M.PUT]],
       ['/user/{userId}/redistribute', [M.POST]],
+      ['/media/search', [M.GET]],
+      ['/media/tv/{tmdbId}/seasons', [M.GET]],
+      ['/user/{userId}/media', [M.GET, M.POST]],
+      ['/user/{userId}/media/refresh', [M.POST]],
+      ['/user/{userId}/media/{mediaId}', [M.DELETE]],
+      ['/user/{userId}/media/{mediaId}/watched', [M.PATCH]],
       ['/user/{userId}/tasks', [M.GET]],
       ['/user/{userId}/tasks/today', [M.GET, M.PATCH]],
       ['/user/{userId}/tasks/long', [M.GET]],

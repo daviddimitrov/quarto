@@ -33,6 +33,7 @@
                 <button type="button" class="side-link" data-view="today"><i class="bi bi-sun"></i><span>Heute</span><span class="count mono" id="count-today"></span></button>
                 <button type="button" class="side-link" data-view="work"><i class="bi bi-briefcase"></i><span>Arbeit</span><span class="count mono" id="count-work"></span></button>
                 <button type="button" class="side-link" data-view="all"><i class="bi bi-list-ul"></i><span>Alle</span></button>
+                <button type="button" class="side-link" data-view="media"><i class="bi bi-film"></i><span>Kino &amp; TV</span><span class="count mono" id="count-media"></span></button>
             </nav>
             <div class="side-budget" id="side-budget">
                 <div class="label">Budget heute</div>
@@ -49,6 +50,7 @@
                     <button type="button" data-view="today">Heute</button>
                     <button type="button" data-view="work">Arbeit</button>
                     <button type="button" data-view="all">Alle</button>
+                    <button type="button" data-view="media">Kino</button>
                 </div>
                 <button type="button" class="icon-btn" data-view="account" aria-label="Konto"><i class="bi bi-person-circle"></i></button>
             </header>
@@ -121,6 +123,21 @@
             </section>
 
             <!-- Konto -->
+            <!-- Kino & TV -->
+            <section id="media-section" class="media" hidden>
+                <div class="media-search">
+                    <div class="quick">
+                        <i class="bi bi-search"></i>
+                        <input id="mediaSearch" type="search" placeholder="Film oder Serie hinzufügen" autocomplete="off" enterkeyhint="search">
+                    </div>
+                    <div id="media-results" class="media-results" hidden></div>
+                    <div id="media-seasons" class="media-seasons" hidden></div>
+                </div>
+                <div id="media-groups"></div>
+                <button type="button" class="ghost-btn" id="mediaRefresh"><i class="bi bi-arrow-repeat"></i> Daten aktualisieren</button>
+                <p class="small muted" id="mediaMessage"></p>
+            </section>
+
             <section id="account-section" class="account" hidden>
                 <form id="account-form">
                     <label class="field">
@@ -295,7 +312,7 @@
         $(document).ready(function () {
             checkAuth();
             initUi();
-            setView({'#alle': 'all', '#arbeit': 'work', '#konto': 'account'}[location.hash] || 'today');
+            setView({'#alle': 'all', '#arbeit': 'work', '#konto': 'account', '#kino': 'media'}[location.hash] || 'today');
         });
     </script>
 </body>
