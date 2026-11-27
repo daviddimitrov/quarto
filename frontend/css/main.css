@@ -66,6 +66,18 @@ kbd {
 
 /* ---------- Gerüst ---------- */
 
+/* Deckt die Statusleiste ab, damit beim Scrollen nichts unter Uhrzeit und Akku läuft */
+.app::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-top);
+    background: var(--bg);
+    z-index: 45;
+}
+
 .app {
     display: flex;
     min-height: 100vh;
@@ -795,6 +807,18 @@ kbd {
 #demand-hint { line-height: 1.5; margin-bottom: 10px; }
 
 .link-btn { color: var(--accent); font-size: 12px; }
+
+.backlog {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-soft);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    color: var(--muted);
+    line-height: 1.5;
+}
 .link-btn:hover { text-decoration: underline; }
 
 .demand-row {

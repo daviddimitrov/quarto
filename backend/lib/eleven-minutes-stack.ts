@@ -141,6 +141,7 @@ export class ElevenMinutesStack extends cdk.Stack {
       ['/user/{userId}/push', [M.POST, M.DELETE]],
       ['/user/{userId}/push/test', [M.POST]],
       ['/user/{userId}/notifications', [M.PUT]],
+      ['/user/{userId}/redistribute', [M.POST]],
       ['/user/{userId}/tasks', [M.GET]],
       ['/user/{userId}/tasks/today', [M.GET, M.PATCH]],
       ['/user/{userId}/tasks/long', [M.GET]],
