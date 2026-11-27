@@ -215,6 +215,8 @@ function loadView(view) {
     $('#lists').prop('hidden', isAccount);
     $('#budget').prop('hidden', view !== 'today');
     $('#kontext-toggle').prop('hidden', view !== 'all');
+    // Liegt außerhalb von #lists, muss also auch im Konto ausgeblendet werden
+    $('#evergreen-bar').prop('hidden', view !== 'today');
     if (isAccount) {
         loadAccount();
         return;
@@ -222,7 +224,6 @@ function loadView(view) {
 
     $('#addTaskButton').prop('hidden', view !== 'all');
     $('#evergreen-section').prop('hidden', !(view === 'all' && allKontext === 'privat'));
-    $('#evergreen-bar').prop('hidden', view !== 'today');
     $('#long-section').prop('hidden', !isDayView(view));
     $('#kontext-toggle button').each(function () {
         $(this).toggleClass('active', this.getAttribute('data-kontext') === allKontext);

@@ -684,6 +684,16 @@ kbd {
 
 .field textarea { resize: vertical; line-height: 1.45; }
 
+/* Safari gibt Datumsfeldern eine Mindestbreite und eigene Höhe, dadurch ragten sie aus dem Bildschirm */
+.field input[type="date"], .field input[type="time"], .notif-row input[type="time"] {
+    -webkit-appearance: none;
+    appearance: none;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 42px;
+    display: block;
+}
+
 .field input:focus, .field select:focus, .field textarea:focus { border-color: #4A4D55; }
 
 .with-unit { position: relative; }
