@@ -177,7 +177,7 @@ Single-Table-Design: Alle Daten eines Nutzers liegen unter einem Partition Key, 
 | `name` | String | Titel |
 | `kontext` | String | `privat` (Standard) oder `arbeit` |
 | `duration` | Zahl | Dauer in Minuten, nur privat |
-| `priority` | Zahl | 1 ASAP, 2 Hoch, 3 Mittel, 4 Niedrig, nur privat |
+| `priority` | Zahl | 2 Hoch, 3 Mittel, 4 Niedrig, nur privat. Früheres ASAP (1) wird wie Hoch behandelt |
 | `due_date` | String | nächste Fälligkeit, ISO |
 | `rhythm` | Zahl | Intervall in Tagen, wenn der Rhythmus eine Zahl ist |
 | `regel` | String | Kalenderregel statt Intervall, siehe unten |
@@ -188,6 +188,7 @@ Single-Table-Design: Alle Daten eines Nutzers liegen unter einem Partition Key, 
 | `deadline` | String | Deadline langfristiger Aufgaben, ISO |
 | `notiz` | String | Freitext, Links werden im Frontend klickbar |
 | `subtasks` | Liste | `[{id, name, done}]` |
+| `evergreen` | Bool | Vorlage für immer wieder anfallende Kleinigkeiten |
 
 Leere Werte werden nicht gespeichert, das Attribut fehlt dann einfach.
 
@@ -275,13 +276,19 @@ Ein PUT ändert nur die mitgeschickten Felder. Das Frontend schickt beim Abhaken
 
 ## Fachlogik
 
-### Drei Arten von Aufgaben
+### Vier Arten von Aufgaben
 
 **Wiederkehrend:** der Normalfall im Haushalt. Hat Fälligkeit, Rhythmus, Dauer und Priorität. Der Collector holt sie auf die Heute-Liste, wenn sie fällig sind und ins Budget passen.
 
 **Spontan:** Wird über das Spontan-Feld angelegt, steht sofort auf heute (`today = 1`), hat keine Dauer und keinen Rhythmus. Private spontane To-dos verfallen in der Nacht, ob erledigt oder nicht. Der Tag beginnt also leer. Spontane Aufgaben auf Arbeit bleiben, bis sie erledigt sind.
 
 **Langfristig:** Wird über das Langfristig-Feld angelegt, optional mit Deadline. Steht in der eigenen Liste unter Heute und hat keine Fälligkeit. Per Drag & Drop wandert sie auf heute und zurück. Zwei Tage vor der Deadline holt der Collector sie automatisch auf heute.
+
+**Evergreen:** Vorlage für Dinge ohne Termin, die immer wieder anfallen: Einkaufen, Wäsche, Gießen, Müll, Duschen. Evergreens werden in Alle (Privat) in einer eigenen Sektion gepflegt. Auf der Heute-Seite stehen sie als Chips unter dem Spontan-Feld. Ein Tipp legt ein spontanes To-do mit demselben Namen an, ohne Dauer. Wie jedes private spontane To-do verfällt es nachts, die Vorlage bleibt. Der Chip ist grau, solange ein To-do mit diesem Namen auf heute steht. Der Collector ignoriert Evergreens.
+
+### Priorität
+
+Hoch, Mittel und Niedrig steuern die Reihenfolge im Collector. Die frühere Stufe ASAP gibt es nicht mehr: Die API speichert sie als Hoch, bestehende Daten werden beim Lesen und im Collector wie Hoch behandelt.
 
 ### Privat und Arbeit
 
@@ -378,7 +385,7 @@ Alle Werte stehen als CSS-Variablen in `:root`.
 
 - **Heute:** private Aufgaben mit `today = 1`, darunter bzw. daneben Langfristig.
 - **Arbeit:** Arbeitsaufgaben mit `today = 1`, darunter bzw. daneben die langfristigen Arbeitsaufgaben.
-- **Alle:** alle nicht langfristigen Aufgaben eines Kontexts mit Fälligkeit, Rhythmus, Dauer und Prioritätspunkt. Der Umschalter Privat/Arbeit wird gemerkt.
+- **Alle:** alle nicht langfristigen Aufgaben eines Kontexts mit Fälligkeit, Rhythmus, Dauer und Prioritätspunkt. Der Umschalter Privat/Arbeit wird gemerkt. Bei Privat folgt darunter die Sektion Evergreens mit eigenem Eingabefeld. Menü: Heute, Umbenennen, Löschen; ein Tipp auf den Namen benennt um.
 - **Konto:** Limits, heutiges Budget und Bedarf, dazu Logout.
 
 Die Ansicht steht im URL-Hash (`#heute`, `#arbeit`, `#alle`, `#konto`), ein Reload bleibt also auf derselben Seite.
@@ -413,6 +420,7 @@ Jede Aufgabe ist eine Zeile mit Kästchen, Name, Infos rechts und „⋯“-Men�
   - Heute und Arbeit: Nicht heute, Morgen, Nächste Woche, Details
   - Langfristig: Heute, Details, Löschen
   - Alle: Bearbeiten, Morgen, Nächste Woche, Löschen
+  - Evergreens: Heute, Umbenennen, Löschen
 
 ### Drag & Drop
 
@@ -427,6 +435,7 @@ In Alle ist Ziehen aus, dort wird nach Fälligkeit sortiert.
 ### Schnelleingabe
 
 - **Spontan-Feld:** Text eingeben, Enter. Mehrere To-dos mit Komma trennen: `aufräumen, post, müll`.
+- **Evergreen-Chips:** ein Tipp setzt den Evergreen als spontanes To-do auf heute.
 - **Langfristig-Feld:** genauso, optional mit Deadline nach `bis`:
   - `bis heute`, `bis morgen`, `bis übermorgen`
   - `bis fr` oder `bis freitag`: nächster Freitag, heute zählt mit
@@ -471,7 +480,7 @@ Typischer Tag:
 
 1. Morgens die App öffnen. Die Heute-Liste ist schon gefüllt, der Balken steht bei 0.
 2. Aufgaben abhaken, der Balken wächst.
-3. Was spontan anfällt, ins Spontan-Feld tippen. Es verschwindet über Nacht von selbst.
+3. Was spontan anfällt, ins Spontan-Feld tippen oder als Evergreen-Chip antippen. Es verschwindet über Nacht von selbst.
 4. Passt eine Aufgabe heute nicht: „⋯“, Morgen oder Nächste Woche.
 5. Größere Vorhaben ins Langfristig-Feld, bei Bedarf mit `bis …`. Wenn Zeit ist, auf Heute ziehen.
 

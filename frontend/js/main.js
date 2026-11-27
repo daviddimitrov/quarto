@@ -218,6 +218,8 @@ function loadView(view) {
     }
 
     $('#addTaskButton').prop('hidden', view !== 'all');
+    $('#evergreen-section').prop('hidden', !(view === 'all' && allKontext === 'privat'));
+    $('#evergreen-chips').prop('hidden', view !== 'today');
     $('#quick-add').prop('hidden', !isDayView(view));
     $('#long-section').prop('hidden', !isDayView(view));
     $('#kontext-toggle button').each(function () {
@@ -239,6 +241,9 @@ function loadView(view) {
         success: function (response) {
             const changed = JSON.stringify(response) !== JSON.stringify(cached);
             writeCache(view, response);
+            if (view === 'all' && allKontext === 'privat') {
+                writeCache('evergreen', response.filter(t => t.evergreen));
+            }
             if (currentView === view && changed) {
                 renderTable(response, view);
             }
@@ -252,6 +257,7 @@ function loadView(view) {
     }
     if (view === 'today') {
         loadBudget();
+        loadEvergreens();
     }
 }
 
@@ -260,13 +266,20 @@ function renderTable(items, view) {
     $list.empty();
     $list.toggleClass('all-view', view === 'all');
 
+    if (view === 'all') {
+        if (allKontext === 'privat') renderEvergreens(items.filter(t => t.evergreen));
+        items = items.filter(t => !t.evergreen);
+    }
     if (items.length === 0) {
         $list.append(`<div class="empty">${view === 'all' ? 'Keine Aufgaben' : 'Alles erledigt'}</div>`);
     } else {
         items.forEach(item => $list.append(buildRow(item, view)));
     }
     initSortable(view);
-    if (view === 'today') renderBudget();
+    if (view === 'today') {
+        renderBudget();
+        renderChips();
+    }
 }
 
 // ---------- Zeilen ----------
@@ -338,7 +351,14 @@ function buildRow(item, view, long = false) {
 }
 
 // Menüeinträge je nach Liste
-function menuItems(id, isLong) {
+function menuItems(id, isLong, isEvergreen) {
+    if (isEvergreen) {
+        return [
+            ['ev-today', 'Heute', 'bi-sun'],
+            ['ev-rename', 'Umbenennen', 'bi-pencil'],
+            ['delete', 'Löschen', 'bi-trash'],
+        ];
+    }
     if (isLong) {
         return [
             ['to-today', 'Heute', 'bi-sun'],
@@ -373,7 +393,7 @@ function openMenu(button) {
         closeMenu();
         return;
     }
-    $menu.attr('data-for', id).html(menuItems(id, isLong).map(([action, label, icon]) =>
+    $menu.attr('data-for', id).html(menuItems(id, isLong, $row.hasClass('ev-row')).map(([action, label, icon]) =>
         `<button type="button" data-action="${action}" class="${action === 'delete' ? 'danger' : ''}"><i class="bi ${icon}"></i>${label}</button>`
     ).join('')).prop('hidden', false);
 
@@ -394,6 +414,8 @@ function runMenuAction(action, id) {
     if (action === 'details') openNote(id);
     else if (action === 'edit') taskEdit(id);
     else if (action === 'delete') startTaskDelete([id]);
+    else if (action === 'ev-today') evergreenToToday(id);
+    else if (action === 'ev-rename') renameEvergreen(id);
     else runTaskAction(action, [id]);
 }
 
@@ -433,7 +455,7 @@ function runTaskAction(action, taskIds) {
     // In Heute und Arbeit verschwindet ein Task bei jeder Aktion, in Alle nur beim Löschen
     if (isDayView(currentView) || action === 'delete') {
         taskIds.forEach(id => $(`.row[data-id="${id}"]`).addClass('leaving').delay(180).queue(function () { $(this).remove(); }));
-        [currentView, 'long'].forEach(view => {
+        [currentView, 'long', 'evergreen'].forEach(view => {
             const remaining = (readCache(view) || []).filter(t => !taskIds.includes(String(t.id)));
             writeCache(view, remaining);
         });
@@ -792,7 +814,7 @@ function updateCounts() {
 function safeRefresh() {
     if (!isAppPage() || currentView === 'account') return;
     if (!$('#row-menu').prop('hidden') || $('.sortable-chosen').length || $('dialog[open]').length) return;
-    if ($(document.activeElement).is('#quickInput, #longInput') && document.activeElement.value) return;
+    if ($(document.activeElement).is('#quickInput, #longInput, #evergreenInput') && document.activeElement.value) return;
     reloadCurrentView();
 }
 
@@ -1060,7 +1082,10 @@ function addQuick(kind, $input) {
     const names = $input.val().split(',').map(s => s.trim()).filter(Boolean);
     if (names.length === 0) return;
     $input.val('');
+    createQuick(kind, names);
+}
 
+function createQuick(kind, names) {
     const key = kind === 'long' ? 'long' : currentView;
     const cached = readCache(key) || [];
     const maxOrder = cached.reduce((m, t) => Math.max(m, t.ordnung || 0), 0);
@@ -1109,6 +1134,111 @@ function addQuick(kind, $input) {
     });
 }
 
+// ---------- Evergreens ----------
+
+function loadEvergreens() {
+    renderChips();
+    $.ajax({
+        url: apiPrefix + 'user/' + $.cookie('user_id') + '/tasks?kontext=privat',
+        method: 'GET',
+        dataType: 'json',
+        success: function (response) {
+            writeCache('evergreen', response.filter(t => t.evergreen));
+            if (currentView === 'today') renderChips();
+        }
+    });
+}
+
+function evergreens() {
+    return (readCache('evergreen') || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'de'));
+}
+
+function todayNames() {
+    return new Set((readRaw(`quarto_today_privat_${$.cookie('user_id')}`) || []).map(t => t.name.trim().toLowerCase()));
+}
+
+// Chips unter dem Spontan-Feld, grau solange der Evergreen schon auf heute steht
+function renderChips() {
+    const items = evergreens();
+    const onToday = todayNames();
+    $('#evergreen-chips').html(items.map(t => {
+        const used = onToday.has(t.name.trim().toLowerCase());
+        return `<button type="button" class="chip-btn${used ? ' used' : ''}" data-name="${escapeHtml(t.name)}"${used ? ' disabled' : ''}>`
+            + `${used ? '<i class="bi bi-check"></i>' : '<i class="bi bi-plus"></i>'}${escapeHtml(t.name)}</button>`;
+    }).join('')).toggleClass('empty-chips', items.length === 0);
+}
+
+function renderEvergreens(items) {
+    items = items.slice().sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    const onToday = todayNames();
+    $('#evergreen-count').text(items.length || '');
+    $('#evergreen-list').html(items.length === 0
+        ? '<div class="empty">Noch keine Evergreens</div>'
+        : items.map(t => `
+            <div class="row ev-row" data-id="${t.id}" data-name="${escapeHtml(t.name)}">
+                <span class="ev-icon"><i class="bi bi-arrow-repeat"></i></span>
+                <div class="row-main"><div class="row-line"><span class="name">${escapeHtml(t.name)}</span></div></div>
+                <div class="meta">${onToday.has(t.name.trim().toLowerCase()) ? '<span class="chip">heute</span>' : ''}</div>
+                <button type="button" class="more" aria-label="Mehr"><i class="bi bi-three-dots"></i></button>
+            </div>`).join(''));
+}
+
+// Legt aus einem Evergreen ein spontanes To-do für heute an
+function evergreenToToday(id) {
+    const ev = (readCache('evergreen') || []).find(t => String(t.id) === String(id));
+    if (!ev) return;
+    if (currentView === 'today') {
+        createQuick('today', [ev.name]);
+        return;
+    }
+    const key = `quarto_today_privat_${$.cookie('user_id')}`;
+    const today = readRaw(key) || [];
+    today.push({ id: `tmp-${Date.now()}`, name: ev.name, spontan: true, today: 1, priorityLevel: { id: null, name: null } });
+    try { localStorage.setItem(key, JSON.stringify(today)); } catch (e) {}
+    updateCounts();
+    renderEvergreens(readCache('evergreen') || []);
+    $.ajax({
+        url: apiPrefix + 'task',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ user_id: $.cookie('user_id'), name: ev.name, spontan: true, kontext: 'privat' }),
+        error: function () { alert('Konnte nicht auf heute gesetzt werden.'); },
+    });
+}
+
+function addEvergreens() {
+    const names = $('#evergreenInput').val().split(',').map(s => s.trim()).filter(Boolean);
+    if (names.length === 0) return;
+    $('#evergreenInput').val('');
+    const created = names.map((name, i) => ({ id: `tmp-${Date.now()}-${i}`, name: name, evergreen: true }));
+    const items = (readCache('evergreen') || []).concat(created);
+    writeCache('evergreen', items);
+    renderEvergreens(items);
+
+    const requests = names.map(name => $.ajax({
+        url: apiPrefix + 'task',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ user_id: $.cookie('user_id'), name: name, evergreen: true, kontext: 'privat' }),
+    }));
+    Promise.allSettled(requests).then(results => {
+        if (results.some(r => r.status === 'rejected')) alert('Nicht alle Evergreens konnten angelegt werden.');
+        reloadCurrentView();
+    });
+}
+
+function renameEvergreen(id) {
+    const items = readCache('evergreen') || [];
+    const ev = items.find(t => String(t.id) === String(id));
+    if (!ev || String(id).startsWith('tmp-')) return;
+    const name = (window.prompt('Neuer Name', ev.name) || '').trim();
+    if (!name || name === ev.name) return;
+    ev.name = name;
+    writeCache('evergreen', items);
+    renderEvergreens(items);
+    putTask(id, { name: name });
+}
+
 // ---------- Helfer ----------
 
 function escapeHtml(text) {
@@ -1142,6 +1272,15 @@ function initUi() {
     $('#long-add').on('submit', function (event) {
         event.preventDefault();
         addQuick('long', $('#longInput'));
+    });
+
+    $('#evergreen-add').on('submit', function (event) {
+        event.preventDefault();
+        addEvergreens();
+    });
+    $('#evergreen-chips').on('click', '.chip-btn:not(.used)', function () {
+        $(this).addClass('used').prop('disabled', true);
+        createQuick('today', [this.getAttribute('data-name')]);
     });
 
     $('#long-toggle').on('click', function () {
@@ -1190,8 +1329,13 @@ function initUi() {
     });
     // Ohne Details öffnet ein Tipp auf den Namen das Bearbeiten
     $(document).on('click', '.row:not(.has-detail) .row-main', function () {
-        const id = $(this).closest('.row').attr('data-id');
+        const $row = $(this).closest('.row');
+        const id = $row.attr('data-id');
         if (String(id).startsWith('tmp-')) return;
+        if ($row.hasClass('ev-row')) {
+            renameEvergreen(id);
+            return;
+        }
         if (currentView === 'all') taskEdit(id); else openNote(id);
     });
 

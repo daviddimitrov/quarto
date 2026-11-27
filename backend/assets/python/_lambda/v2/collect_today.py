@@ -88,13 +88,13 @@ def collect_for_user(user_id, nightly):
         tasks = [t for t in tasks if t not in expired]
 
     def is_due(t):
-        return (not t.get("spontan") and not t.get("long_term")
+        return (not t.get("spontan") and not t.get("long_term") and not t.get("evergreen")
                 and t.get("due_date") and t["due_date"] <= today)
 
     # Privat: nach Priorität, Fälligkeit und Rhythmus bis zum Zeitbudget
     private = [t for t in tasks if kontext(t) == "privat" and is_due(t)]
     private.sort(key=lambda t: (
-        int(t.get("priority") or NO_VALUE),
+        max(2, int(t.get("priority") or NO_VALUE)),  # früheres ASAP zählt wie Hoch
         t["due_date"],
         int(t.get("rhythm") or NO_VALUE) if str(t.get("rhythm") or "").isdigit() else NO_VALUE,
     ))
@@ -131,7 +131,7 @@ def collect_for_user(user_id, nightly):
     chosen.update(t["SK"] for t in deadline_tasks)
 
     for t in tasks:
-        if t.get("spontan"):
+        if t.get("spontan") or t.get("evergreen"):
             continue
         new = 1 if t["SK"] in chosen else 0
         if int(t.get("today", 0)) != new:

@@ -462,6 +462,49 @@ kbd {
 
 .ghost-btn:hover { color: var(--text); border-color: #3A3D43; }
 
+/* Evergreens */
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 2px 0 10px;
+}
+
+.chips.empty-chips { display: none; }
+
+.chip-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 30px;
+    padding: 0 10px 0 7px;
+    border: 1px solid var(--border);
+    border-radius: 15px;
+    color: var(--muted);
+    font-size: 13px;
+    transition: background .12s, color .12s, border-color .12s;
+}
+
+.chip-btn i { font-size: 13px; color: var(--faint); }
+.chip-btn:hover { color: var(--text); border-color: #3A3D43; background: var(--surface); }
+.chip-btn:active { background: var(--hover); }
+.chip-btn.used { opacity: .45; cursor: default; }
+.chip-btn.used i { color: var(--accent); }
+.chip-btn.used:hover { background: none; border-color: var(--border); color: var(--muted); }
+
+.evergreens { margin-top: 26px; }
+
+.section-head.static { cursor: default; }
+
+.ev-icon {
+    flex: none;
+    width: 16px;
+    color: var(--faint);
+    font-size: 13px;
+    padding-top: 13px;
+    text-align: center;
+}
+
 /* ---------- Menü und Popover ---------- */
 
 .menu {
@@ -771,6 +814,7 @@ kbd {
     .row:hover .more, .row.open .more { opacity: 1; }
     .row:hover .grip { visibility: visible; }
     body[data-current="all"] .grip { display: none; }
+    .ev-icon { padding-top: 11px; }
 
     .quick input { font-size: 14px; }
 

@@ -76,8 +76,24 @@
                         <input id="quickInput" type="text" placeholder="Spontan: aufräumen, post" enterkeyhint="done">
                         <kbd class="key-hint">N</kbd>
                     </form>
+                    <div id="evergreen-chips" class="chips" hidden></div>
                     <div id="task-list" class="list"></div>
                     <button type="button" class="ghost-btn" id="addTaskButton" hidden><i class="bi bi-plus-lg"></i> Neue Aufgabe</button>
+
+                    <!-- Evergreens: wiederkehrende Kleinigkeiten ohne Termin, nur in Alle bearbeitbar -->
+                    <section id="evergreen-section" class="evergreens" hidden>
+                        <div class="section-head static">
+                            <span>Evergreens</span>
+                            <span class="mono muted" id="evergreen-count"></span>
+                            <span class="rule"></span>
+                        </div>
+                        <div id="evergreen-list" class="list"></div>
+                        <form id="evergreen-add" class="quick dashed" autocomplete="off">
+                            <i class="bi bi-plus-lg"></i>
+                            <input id="evergreenInput" type="text" placeholder="Evergreen: duschen, müll" enterkeyhint="done">
+                            <button type="button" class="info-btn" data-info="Dinge ohne Termin, die immer wieder anfallen.<br>Ein Tipp auf den Chip in <b>Heute</b> setzt sie auf heute. Unerledigt verfallen sie nachts, der Evergreen bleibt.<br>Mehrere mit Komma trennen." aria-label="Hilfe"><i class="bi bi-info-circle"></i></button>
+                        </form>
+                    </section>
                 </section>
 
                 <section class="col-long" id="long-section">
@@ -190,7 +206,6 @@
                         <option value="4">Niedrig</option>
                         <option value="3">Mittel</option>
                         <option value="2">Hoch</option>
-                        <option value="1">ASAP</option>
                     </select>
                 </label>
                 <label class="field private-only">
