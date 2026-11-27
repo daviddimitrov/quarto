@@ -9,7 +9,7 @@ from boto3.dynamodb.conditions import Attr
 
 from collect_today import NO_VALUE, collect_for_user, query_all, table
 
-PRIORITIES = {2: "HIGH", 3: "MEDIUM", 4: "LOW"}
+PRIORITIES = {1: "ASAP", 2: "HIGH", 3: "MEDIUM", 4: "LOW"}
 FIELDS = {
     "name": "name", "duration": "duration", "dueDate": "due_date", "due_date": "due_date",
     "rhythm": "rhythm", "today": "today", "priority_level_id": "priority", "priority": "priority",
@@ -135,8 +135,6 @@ def parse(body):
             v = None
         elif field in NUMERIC and isinstance(v, str):
             v = int(v)
-        if field == "priority" and v is not None and int(v) < 2:
-            v = 2  # ASAP gibt es nicht mehr, wird zu Hoch
         elif isinstance(v, float):
             v = Decimal(str(v))
         data[field] = v
@@ -144,7 +142,7 @@ def parse(body):
 
 
 def to_dto(t, user_id, profile):
-    prio = max(2, int(t["priority"])) if t.get("priority") is not None else None
+    prio = int(t["priority"]) if t.get("priority") is not None else None
     return {
         "id": t["id"],
         "userId": {"id": user_id, "name": profile["name"], "default_duration": profile.get("default_duration")},

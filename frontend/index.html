@@ -71,11 +71,6 @@
 
             <div class="columns" id="lists">
                 <section class="col-today">
-                    <form id="quick-add" class="quick" autocomplete="off">
-                        <i class="bi bi-plus-lg"></i>
-                        <input id="quickInput" type="text" placeholder="Spontan: aufräumen, post" enterkeyhint="done">
-                        <kbd class="key-hint">N</kbd>
-                    </form>
                     <div id="evergreen-chips" class="chips" hidden></div>
                     <div id="task-list" class="list"></div>
                     <button type="button" class="ghost-btn" id="addTaskButton" hidden><i class="bi bi-plus-lg"></i> Neue Aufgabe</button>
@@ -98,7 +93,7 @@
 
                 <section class="col-long" id="long-section">
                     <button type="button" class="section-head" id="long-toggle">
-                        <span>Langfristig</span>
+                        <span>Einmalig</span>
                         <span class="mono muted" id="long-count"></span>
                         <span class="rule"></span>
                         <i class="bi bi-chevron-down chevron"></i>
@@ -106,8 +101,8 @@
                     <div id="long-list" class="list long"></div>
                     <form id="long-add" class="quick dashed" autocomplete="off">
                         <i class="bi bi-plus-lg"></i>
-                        <input id="longInput" type="text" placeholder="Langfristig: Steuer bis 31.7." enterkeyhint="done">
-                        <kbd class="key-hint">L</kbd>
+                        <input id="longInput" type="text" placeholder="Einmalig: Steuer bis 31.7." enterkeyhint="done">
+                        <kbd class="key-hint">N</kbd>
                         <button type="button" class="info-btn" data-info="Mehrere To-dos mit Komma trennen.<br>Deadline mit <b>bis</b>: bis morgen, bis fr, bis 3.12., bis 3.12.2027<br>Ab zwei Tagen vorher wird sie orange." aria-label="Hilfe"><i class="bi bi-info-circle"></i></button>
                     </form>
                     <div class="drag-hint key-hint">nach links ziehen = heute</div>
@@ -206,6 +201,7 @@
                         <option value="4">Niedrig</option>
                         <option value="3">Mittel</option>
                         <option value="2">Hoch</option>
+                        <option value="1">ASAP</option>
                     </select>
                 </label>
                 <label class="field private-only">

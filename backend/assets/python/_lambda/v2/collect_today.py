@@ -94,7 +94,7 @@ def collect_for_user(user_id, nightly):
     # Privat: nach Priorität, Fälligkeit und Rhythmus bis zum Zeitbudget
     private = [t for t in tasks if kontext(t) == "privat" and is_due(t)]
     private.sort(key=lambda t: (
-        max(2, int(t.get("priority") or NO_VALUE)),  # früheres ASAP zählt wie Hoch
+        int(t.get("priority") or NO_VALUE),
         t["due_date"],
         int(t.get("rhythm") or NO_VALUE) if str(t.get("rhythm") or "").isdigit() else NO_VALUE,
     ))

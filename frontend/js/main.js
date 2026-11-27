@@ -220,13 +220,11 @@ function loadView(view) {
     $('#addTaskButton').prop('hidden', view !== 'all');
     $('#evergreen-section').prop('hidden', !(view === 'all' && allKontext === 'privat'));
     $('#evergreen-chips').prop('hidden', view !== 'today');
-    $('#quick-add').prop('hidden', !isDayView(view));
     $('#long-section').prop('hidden', !isDayView(view));
     $('#kontext-toggle button').each(function () {
         $(this).toggleClass('active', this.getAttribute('data-kontext') === allKontext);
     });
-    $('#quickInput').attr('placeholder', view === 'work' ? 'Spontan: Outlook aufräumen, staffit' : 'Spontan: aufräumen, post');
-    $('#longInput').attr('placeholder', view === 'work' ? 'Langfristig: Diagramm bis fr' : 'Langfristig: Steuer bis 31.7.');
+    $('#longInput').attr('placeholder', view === 'work' ? 'Einmalig: Diagramm bis fr' : 'Einmalig: Steuer bis 31.7.');
 
     const cached = readCache(view);
     if (cached) {
@@ -814,7 +812,7 @@ function updateCounts() {
 function safeRefresh() {
     if (!isAppPage() || currentView === 'account') return;
     if (!$('#row-menu').prop('hidden') || $('.sortable-chosen').length || $('dialog[open]').length) return;
-    if ($(document.activeElement).is('#quickInput, #longInput, #evergreenInput') && document.activeElement.value) return;
+    if ($(document.activeElement).is('#longInput, #evergreenInput') && document.activeElement.value) return;
     reloadCurrentView();
 }
 
@@ -1265,10 +1263,6 @@ function initUi() {
         setAllKontext(this.getAttribute('data-kontext'));
     });
 
-    $('#quick-add').on('submit', function (event) {
-        event.preventDefault();
-        addQuick('today', $('#quickInput'));
-    });
     $('#long-add').on('submit', function (event) {
         event.preventDefault();
         addQuick('long', $('#longInput'));
@@ -1366,7 +1360,7 @@ function initUi() {
     });
     $('dialog').on('close', hidePop);
 
-    // Tastenkürzel auf dem Mac: N spontan, L langfristig, Esc raus
+    // Tastenkürzel auf dem Mac: N neues einmaliges To-do, Esc raus
     $(document).on('keydown', function (event) {
         const typing = $(event.target).is('input, textarea, select');
         if (event.key === 'Escape') {
@@ -1383,10 +1377,7 @@ function initUi() {
             }
             return;
         }
-        if (event.key.toLowerCase() === 'n') {
-            event.preventDefault();
-            $('#quickInput').trigger('focus');
-        } else if (event.key.toLowerCase() === 'l') {
+        if (event.key.toLowerCase() === 'n' || event.key.toLowerCase() === 'l') {
             event.preventDefault();
             setLongCollapsed(false);
             $('#longInput').trigger('focus');

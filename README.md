@@ -1,12 +1,12 @@
 # Quarto
 
-Quarto ist meine persönliche To-do-App und der einzige Ort für alle Aufgaben: Haushalt, Arbeit, Einmaliges und Langfristiges. Sie ersetzt Telegram-Bot, Microsoft To-Do und die alte Postgres-Version von Quarto.
+Quarto ist meine persönliche To-do-App und der einzige Ort für alle Aufgaben: Haushalt, Arbeit, Einmaliges und Kleinigkeiten, die immer wieder anfallen. Sie ersetzt Telegram-Bot, Microsoft To-Do und die alte Postgres-Version von Quarto.
 
-Die Leitidee kommt vom Vorgänger „Eleven Minutes“: Jeden Tag stellt Quarto eine kleine Liste privater Aufgaben zusammen, die in ein festes Zeitbudget passt. Wer jeden Tag ein paar Minuten investiert, hält den Haushalt sauber, ohne jemals einen Putzmarathon zu brauchen. Dazu kommen die Arbeitsaufgaben, spontane To-dos für den Tag und eine Liste langfristiger Vorhaben mit Deadlines.
+Die Leitidee kommt vom Vorgänger „Eleven Minutes“: Jeden Tag stellt Quarto eine kleine Liste privater Aufgaben zusammen, die in ein festes Zeitbudget passt. Wer jeden Tag ein paar Minuten investiert, hält den Haushalt sauber, ohne jemals einen Putzmarathon zu brauchen. Dazu kommen die Arbeitsaufgaben, Evergreens, die man mit einem Tipp auf den Tag holt, und eine Liste einmaliger Aufgaben mit optionaler Deadline.
 
 Anforderungen, an denen sich alle Entscheidungen messen:
 
-- **Schnelle Eingabe:** Spontane und langfristige To-dos sind mit einer Zeile Text angelegt, ohne Dialog.
+- **Schnelle Eingabe:** Einmalige To-dos sind mit einer Zeile Text angelegt, Evergreens mit einem Tipp, ohne Dialog.
 - **Schnell in der Bedienung:** Optimistic UI, die App reagiert sofort und synchronisiert im Hintergrund.
 - **Läuft auf iPhone und Mac:** als PWA auf dem Homescreen und als Dock-App.
 - **Kostet unter 1 € im Monat:** komplett serverless, alles im AWS Free Tier oder Cent-Bereich.
@@ -52,7 +52,7 @@ Lambda CollectFn (collect_today.py) ──────┘
 
 - **Frontend:** statische Seite auf GitHub Pages, ohne Build-Schritt.
 - **Backend:** AWS CDK Stack in eu-central-1 mit HTTP API, zwei Python-Lambdas, einer DynamoDB-Tabelle und einem Cognito User Pool.
-- **Nachtlauf:** Der Collector stellt jede Nacht die Heute-Liste neu zusammen, berechnet das Budget und räumt spontane To-dos auf.
+- **Nachtlauf:** Der Collector stellt jede Nacht die Heute-Liste neu zusammen, berechnet das Budget und räumt die per Evergreen angelegten To-dos auf.
 
 ## Repository
 
@@ -177,15 +177,15 @@ Single-Table-Design: Alle Daten eines Nutzers liegen unter einem Partition Key, 
 | `name` | String | Titel |
 | `kontext` | String | `privat` (Standard) oder `arbeit` |
 | `duration` | Zahl | Dauer in Minuten, nur privat |
-| `priority` | Zahl | 2 Hoch, 3 Mittel, 4 Niedrig, nur privat. Früheres ASAP (1) wird wie Hoch behandelt |
+| `priority` | Zahl | 1 ASAP, 2 Hoch, 3 Mittel, 4 Niedrig, nur privat |
 | `due_date` | String | nächste Fälligkeit, ISO |
 | `rhythm` | Zahl | Intervall in Tagen, wenn der Rhythmus eine Zahl ist |
 | `regel` | String | Kalenderregel statt Intervall, siehe unten |
 | `today` | Zahl | 1 = steht auf der Heute- bzw. Arbeit-Liste |
 | `ordnung` | Zahl | Sortierschlüssel für Drag & Drop |
-| `spontan` | Bool | spontanes To-do für heute |
-| `long_term` | Bool | langfristiges Vorhaben |
-| `deadline` | String | Deadline langfristiger Aufgaben, ISO |
+| `spontan` | Bool | To-do nur für heute, entsteht aus einem Evergreen |
+| `long_term` | Bool | einmalige Aufgabe (in der Oberfläche „Einmalig“, technisch weiter `long_term`) |
+| `deadline` | String | Deadline einmaliger Aufgaben, ISO |
 | `notiz` | String | Freitext, Links werden im Frontend klickbar |
 | `subtasks` | Liste | `[{id, name, done}]` |
 | `evergreen` | Bool | Vorlage für immer wieder anfallende Kleinigkeiten |
@@ -280,15 +280,15 @@ Ein PUT ändert nur die mitgeschickten Felder. Das Frontend schickt beim Abhaken
 
 **Wiederkehrend:** der Normalfall im Haushalt. Hat Fälligkeit, Rhythmus, Dauer und Priorität. Der Collector holt sie auf die Heute-Liste, wenn sie fällig sind und ins Budget passen.
 
-**Spontan:** Wird über das Spontan-Feld angelegt, steht sofort auf heute (`today = 1`), hat keine Dauer und keinen Rhythmus. Private spontane To-dos verfallen in der Nacht, ob erledigt oder nicht. Der Tag beginnt also leer. Spontane Aufgaben auf Arbeit bleiben, bis sie erledigt sind.
+**Spontan:** Entsteht nur noch per Tipp auf einen Evergreen-Chip, ein eigenes Eingabefeld gibt es nicht mehr. Steht sofort auf heute (`today = 1`), hat keine Dauer und keinen Rhythmus und verfällt nachts, ob erledigt oder nicht. Ältere spontane Aufgaben auf Arbeit bleiben, bis sie erledigt sind.
 
-**Langfristig:** Wird über das Langfristig-Feld angelegt, optional mit Deadline. Steht in der eigenen Liste unter Heute und hat keine Fälligkeit. Per Drag & Drop wandert sie auf heute und zurück. Zwei Tage vor der Deadline holt der Collector sie automatisch auf heute.
+**Einmalig:** Wird über das Einmalig-Feld angelegt, optional mit Deadline. Im Code und in der Datenbank heißt das weiterhin `long_term` bzw. „langfristig“. Steht in der eigenen Liste unter Heute und hat keine Fälligkeit. Per Drag & Drop wandert sie auf heute und zurück. Zwei Tage vor der Deadline holt der Collector sie automatisch auf heute.
 
-**Evergreen:** Vorlage für Dinge ohne Termin, die immer wieder anfallen: Einkaufen, Wäsche, Gießen, Müll, Duschen. Evergreens werden in Alle (Privat) in einer eigenen Sektion gepflegt. Auf der Heute-Seite stehen sie als Chips unter dem Spontan-Feld. Ein Tipp legt ein spontanes To-do mit demselben Namen an, ohne Dauer. Wie jedes private spontane To-do verfällt es nachts, die Vorlage bleibt. Der Chip ist grau, solange ein To-do mit diesem Namen auf heute steht. Der Collector ignoriert Evergreens.
+**Evergreen:** Vorlage für Dinge ohne Termin, die immer wieder anfallen: Einkaufen, Wäsche, Gießen, Müll, Duschen. Evergreens werden in Alle (Privat) in einer eigenen Sektion gepflegt. Auf der Heute-Seite stehen sie als Chips über der Liste. Ein Tipp legt ein spontanes To-do mit demselben Namen an, ohne Dauer. Wie jedes private spontane To-do verfällt es nachts, die Vorlage bleibt. Der Chip ist grau, solange ein To-do mit diesem Namen auf heute steht. Der Collector ignoriert Evergreens.
 
 ### Priorität
 
-Hoch, Mittel und Niedrig steuern die Reihenfolge im Collector. Die frühere Stufe ASAP gibt es nicht mehr: Die API speichert sie als Hoch, bestehende Daten werden beim Lesen und im Collector wie Hoch behandelt.
+ASAP, Hoch, Mittel und Niedrig steuern die Reihenfolge im Collector. ASAP ist für Dinge wie „Kontaktlinsen wechseln“, die am Fälligkeitstag auf jeden Fall drankommen sollen: Sie stehen in der Sortierung vor allem anderen und bekommen ihre Minuten zuerst.
 
 ### Privat und Arbeit
 
@@ -378,13 +378,13 @@ Alle Werte stehen als CSS-Variablen in `:root`.
 
 ### Layout
 
-- **iPhone (unter 900 px):** oben eine Umschaltleiste Heute / Arbeit / Alle und ein Konto-Knopf, darunter Budgetzeile, Spontan-Feld, Heute-Liste und die einklappbare Langfristig-Liste. Zeilen sind 44 px hoch, Eingabefelder nutzen 16 px Schrift, damit Safari nicht zoomt. Safe-Area-Abstände für Notch und Home-Indicator sind eingerechnet.
-- **Mac (ab 900 px):** links eine Seitenleiste mit Navigation, Zählern, Budget und Konto. Rechts Heute und Langfristig nebeneinander, Langfristig als eigenes Panel. Zeilen sind 40 px hoch, „⋯“ und Griff erscheinen beim Überfahren, Unteraufgaben stehen in zwei Spalten.
+- **iPhone (unter 900 px):** oben eine Umschaltleiste Heute / Arbeit / Alle und ein Konto-Knopf, darunter Budgetzeile, Evergreen-Chips (nur Heute), die Liste und die einklappbare Einmalig-Liste. Zeilen sind 44 px hoch, Eingabefelder nutzen 16 px Schrift, damit Safari nicht zoomt. Safe-Area-Abstände für Notch und Home-Indicator sind eingerechnet.
+- **Mac (ab 900 px):** links eine Seitenleiste mit Navigation, Zählern, Budget und Konto. Rechts Heute und Einmalig nebeneinander, Einmalig als eigenes Panel. Zeilen sind 40 px hoch, „⋯“ und Griff erscheinen beim Überfahren, Unteraufgaben stehen in zwei Spalten.
 
 ### Ansichten
 
-- **Heute:** private Aufgaben mit `today = 1`, darunter bzw. daneben Langfristig.
-- **Arbeit:** Arbeitsaufgaben mit `today = 1`, darunter bzw. daneben die langfristigen Arbeitsaufgaben.
+- **Heute:** Evergreen-Chips und private Aufgaben mit `today = 1`, darunter bzw. daneben Einmalig.
+- **Arbeit:** Arbeitsaufgaben mit `today = 1`, darunter bzw. daneben die einmaligen Arbeitsaufgaben.
 - **Alle:** alle nicht langfristigen Aufgaben eines Kontexts mit Fälligkeit, Rhythmus, Dauer und Prioritätspunkt. Der Umschalter Privat/Arbeit wird gemerkt. Bei Privat folgt darunter die Sektion Evergreens mit eigenem Eingabefeld. Menü: Heute, Umbenennen, Löschen; ein Tipp auf den Namen benennt um.
 - **Konto:** Limits, heutiges Budget und Bedarf, dazu Logout.
 
@@ -418,7 +418,7 @@ Jede Aufgabe ist eine Zeile mit Kästchen, Name, Infos rechts und „⋯“-Men�
 - **Name:** Hat die Aufgabe Unteraufgaben oder Notiz, klappt ein Tipp sie auf: Fortschrittslinie, abhakbare Unteraufgaben, Notiz mit klickbaren Links. Aufgeklappte bleiben über Neuladen hinweg offen. Ohne Details öffnet ein Tipp den Details-Dialog (Heute, Arbeit) bzw. den Bearbeiten-Dialog (Alle).
 - **„⋯“-Menü:**
   - Heute und Arbeit: Nicht heute, Morgen, Nächste Woche, Details
-  - Langfristig: Heute, Details, Löschen
+  - Einmalig: Heute, Details, Löschen
   - Alle: Bearbeiten, Morgen, Nächste Woche, Löschen
   - Evergreens: Heute, Umbenennen, Löschen
 
@@ -427,16 +427,15 @@ Jede Aufgabe ist eine Zeile mit Kästchen, Name, Infos rechts und „⋯“-Men�
 SortableJS auf beiden Listen derselben Gruppe. Auf dem iPhone startet das Ziehen nach 220 ms Gedrückthalten, auf dem Mac sofort. Kästchen, Menü, Unteraufgaben und Links starten kein Ziehen.
 
 - **Innerhalb einer Liste:** neue Ordnung aus den Nachbarn, siehe [Ordnung](#ordnung).
-- **Von Langfristig nach Heute:** `today = 1`.
-- **Von Heute nach Langfristig:** nur bei langfristigen Aufgaben erlaubt, `today = 0`.
+- **Von Einmalig nach Heute:** `today = 1`.
+- **Von Heute nach Einmalig:** nur bei einmaligen Aufgaben erlaubt, `today = 0`.
 
 In Alle ist Ziehen aus, dort wird nach Fälligkeit sortiert.
 
 ### Schnelleingabe
 
-- **Spontan-Feld:** Text eingeben, Enter. Mehrere To-dos mit Komma trennen: `aufräumen, post, müll`.
 - **Evergreen-Chips:** ein Tipp setzt den Evergreen als spontanes To-do auf heute.
-- **Langfristig-Feld:** genauso, optional mit Deadline nach `bis`:
+- **Einmalig-Feld:** Text eingeben, Enter. Mehrere To-dos mit Komma trennen, optional mit Deadline nach `bis`:
   - `bis heute`, `bis morgen`, `bis übermorgen`
   - `bis fr` oder `bis freitag`: nächster Freitag, heute zählt mit
   - `bis 3.12.`: der nächste 3.12., liegt er in der Vergangenheit, im nächsten Jahr
@@ -448,7 +447,7 @@ In Alle ist Ziehen aus, dort wird nach Fälligkeit sortiert.
 Native `<dialog>`-Elemente, ein Klick auf den Hintergrund schließt sie.
 
 - **Neue Aufgabe / Bearbeiten:** Name, Fälligkeit, Rhythmus (mit Info zur Syntax), Priorität, Dauer, Unteraufgaben (eine pro Zeile), Notiz. Bei Arbeit sind Priorität und Dauer ausgeblendet.
-- **Details:** nur Unteraufgaben und Notiz, für Heute, Arbeit und Langfristig.
+- **Details:** nur Unteraufgaben und Notiz, für Heute, Arbeit und Einmalig.
 - **Löschen:** Rückfrage mit Namen.
 
 Beim Bearbeiten der Unteraufgaben als Text behalten unveränderte Zeilen ihr Häkchen.
@@ -457,8 +456,7 @@ Beim Bearbeiten der Unteraufgaben als Text behalten unveränderte Zeilen ihr Hä
 
 | Taste | Wirkung |
 |---|---|
-| `N` | in Heute/Arbeit ins Spontan-Feld, in Alle neue Aufgabe |
-| `L` | ins Langfristig-Feld |
+| `N` oder `L` | in Heute/Arbeit ins Einmalig-Feld, in Alle (nur `N`) neue Aufgabe |
 | `Esc` | Menü und Popover schließen, Feld verlassen |
 
 Auf Touch-Geräten sind die Tastenhinweise ausgeblendet.
@@ -480,9 +478,9 @@ Typischer Tag:
 
 1. Morgens die App öffnen. Die Heute-Liste ist schon gefüllt, der Balken steht bei 0.
 2. Aufgaben abhaken, der Balken wächst.
-3. Was spontan anfällt, ins Spontan-Feld tippen oder als Evergreen-Chip antippen. Es verschwindet über Nacht von selbst.
+3. Kleinigkeiten wie Einkaufen oder Wäsche per Evergreen-Chip auf heute holen. Sie verschwinden über Nacht von selbst.
 4. Passt eine Aufgabe heute nicht: „⋯“, Morgen oder Nächste Woche.
-5. Größere Vorhaben ins Langfristig-Feld, bei Bedarf mit `bis …`. Wenn Zeit ist, auf Heute ziehen.
+5. Alles Einmalige ins Einmalig-Feld, bei Bedarf mit `bis …`. Wenn Zeit ist, auf Heute ziehen.
 
 Neue wiederkehrende Aufgaben legt man in Alle an, Rhythmus und Dauer ehrlich schätzen. Die Konto-Seite zeigt danach, ob das Limit noch reicht.
 
