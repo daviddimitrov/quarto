@@ -391,6 +391,15 @@ Einrichtung in der Kurzbefehle-App: Kurzbefehl „Quarto“ mit den Aktionen *Na
 
 404 bei unbekannter Route, Aufgabe oder Profil, 403 bei fremder Nutzer-ID, 500 mit Fehlertext bei Ausnahmen. Die Ausnahme landet zusätzlich in CloudWatch Logs.
 
+### Planta
+
+Fällige Pflanzenaufgaben aus der Planta-App (`planta.py`, öffentliche API `public.planta-api.com/v1`, braucht Planta Premium).
+
+- **Verbinden:** Im Konto einen Code von `getplanta.com/apps/manage` einfügen. `POST /user/{userId}/planta` tauscht ihn gegen Access- und Refresh-Token und gleicht sofort ab. Die Tokens liegen im Item `SK = PLANTA` (DynamoDB verschlüsselt im Ruhezustand), abgelaufene Access-Tokens werden automatisch erneuert. `DELETE` trennt, bestehende Pflanzenaufgaben bleiben.
+- **Abgleich:** Nachts direkt nach dem Collector (CollectFn), dazu per „Jetzt abgleichen“ (`POST /user/{userId}/planta/sync`). Nur Gießen und Düngen mit Termin bis heute. Besprühen, Reinigen, Umtopfen und Rückschnitt werden ignoriert und bleiben in Planta unangetastet.
+- **Aufgaben:** Eine pro Pflanze und Aktion, etwa „Monstera gießen · Wohnzimmer“, privat, ASAP, Dauer 0, immer auf heute. Erkannt über `planta_key = <pflanzen-id>:<aktion>`, dazu `planta_plant` und `planta_action`. Der Collector fasst sie nicht an. Verschobene stehen beim nächsten Abgleich wieder auf heute, was in Planta nicht mehr fällig ist (etwa direkt dort abgehakt), wird gelöscht.
+- **Abhaken** in Quarto oder per Siri ruft `actions/complete` in Planta auf und löscht die Aufgabe. Schlägt Planta fehl, kommt sie beim nächsten Abgleich wieder.
+
 ## Fachlogik
 
 ### Vier Arten von Aufgaben

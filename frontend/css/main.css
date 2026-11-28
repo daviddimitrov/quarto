@@ -1148,3 +1148,5 @@ kbd {
 
     .field input, .field select, .field textarea { font-size: 14px; }
 }
+
+.keybox input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--text); font-size: 16px; outline: none; }

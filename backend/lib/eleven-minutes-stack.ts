@@ -177,6 +177,8 @@ export class ElevenMinutesStack extends cdk.Stack {
       ['/user/{userId}/notifications', [M.PUT]],
       ['/user/{userId}/redistribute', [M.POST]],
       ['/user/{userId}/tasks/replacements', [M.GET]],
+      ['/user/{userId}/planta', [M.POST, M.DELETE]],
+      ['/user/{userId}/planta/sync', [M.POST]],
       ['/media/search', [M.GET]],
       ['/media/tv/{tmdbId}/seasons', [M.GET]],
       ['/user/{userId}/media', [M.GET, M.POST]],

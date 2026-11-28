@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from boto3.dynamodb.conditions import Attr
 
 import media
+import planta
 import push
 from collect_today import NO_VALUE, collect_for_user, interval_days, query_all, table
 
@@ -226,6 +227,32 @@ def replacements(p, body):
                               int(t.get("priority") or NO_VALUE) if t["due_date"] <= now else 0,
                               t["due_date"]))
     return 200, [to_dto(t, user_id, profile) for t in tasks[:5]]
+
+
+def planta_connect(p, body):
+    code = str(body.get("code") or "").strip()
+    if not code:
+        return 400, {"message": "code fehlt"}
+    try:
+        planta.connect(p["userId"], code)
+    except planta.PlantaError as e:
+        return 400, {"message": f"Planta hat den Code nicht angenommen ({e.status})."}
+    return 200, planta.sync_user(p["userId"]) or {}
+
+
+def planta_disconnect(p, body):
+    planta.disconnect(p["userId"])
+    return 200, {"message": "getrennt"}
+
+
+def planta_sync(p, body):
+    try:
+        result = planta.sync_user(p["userId"])
+    except planta.PlantaError as e:
+        return 502, {"message": f"Planta antwortet nicht wie erwartet ({e.status})."}
+    if result is None:
+        return 404, {"message": "Planta ist nicht verbunden"}
+    return 200, result
 
 
 def collect(p, body):
@@ -502,6 +529,14 @@ def set_done(p, body):
     if item is None:
         return 404, {"message": "Task not found"}
     count_done(p["userId"], item)
+    if item.get("planta_key"):
+        try:
+            planta.complete(p["userId"], item)
+        except Exception as e:
+            # Die Aufgabe kommt beim nächsten Abgleich wieder, wenn Planta sie noch für fällig hält
+            print(f"Planta abhaken fehlgeschlagen: {e}")
+        table.delete_item(Key=key(p["userId"], p["taskId"]))
+        return 202, {"message": "Task set to done successfully"}
     nxt = None if item.get("spontan") else next_due(item, today())
     if nxt is None:
         table.delete_item(Key=key(p["userId"], p["taskId"]))
@@ -558,6 +593,7 @@ def get_profile_route(p, body):
         "vacationFrom": prof.get("vacation_from"),
         "vacationTo": prof.get("vacation_to"),
         "notifications": push.notifications_of(prof),
+        "plantaConnected": planta.is_connected(p["userId"]),
     }
 
 
@@ -784,6 +820,9 @@ ROUTES = {
     "GET /user/{userId}/tasks/today": lambda p, b: list_tasks(p, b, mode="today"),
     "GET /user/{userId}/tasks/long": lambda p, b: list_tasks(p, b, mode="long"),
     "PATCH /user/{userId}/tasks/today": collect,
+    "POST /user/{userId}/planta": planta_connect,
+    "DELETE /user/{userId}/planta": planta_disconnect,
+    "POST /user/{userId}/planta/sync": planta_sync,
     "GET /user/{userId}/tasks/replacements": replacements,
     "POST /task": create_task,
     "GET /user/{userId}/task/{taskId}": get_task,

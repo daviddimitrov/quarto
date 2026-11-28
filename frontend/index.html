@@ -207,6 +207,20 @@
                     </div>
                 </div>
 
+                <div class="panel" id="planta">
+                    <div class="demand-head"><i class="bi bi-flower1"></i><span>Planta</span></div>
+                    <p class="muted small">Was in Planta zu gießen oder zu düngen ist, steht jeden Morgen als ASAP-Aufgabe ohne Dauer auf heute, eine pro Pflanze mit Raum. Abhaken hakt auch in Planta ab. Braucht Planta Premium.</p>
+                    <div id="plantaConnect" hidden>
+                        <p class="small">Code auf <span class="mono">getplanta.com/apps/manage</span> erzeugen und hier einfügen:</p>
+                        <div class="keybox"><input type="text" id="plantaCode" class="mono" placeholder="Code" autocomplete="off"><button type="button" class="btn primary" id="plantaConnectButton">Verbinden</button></div>
+                    </div>
+                    <div id="plantaConnected" class="actions start" hidden>
+                        <button type="button" class="btn" id="plantaSync">Jetzt abgleichen</button>
+                        <button type="button" class="btn" id="plantaDisconnect">Trennen</button>
+                    </div>
+                    <p class="small" id="plantaMessage"></p>
+                </div>
+
                 <div class="panel" id="siri">
                     <div class="demand-head"><i class="bi bi-mic"></i><span>Siri-Kurzbefehl</span></div>
                     <p class="muted small">„Hey Siri, Quarto“, dann sagen:<br><span class="mono">Was steht heute an?</span> liest die offenen Aufgaben vor<br><span class="mono">Küche erledigt</span> hakt ab<br><span class="mono">Einkaufen</span> holt den Evergreen auf heute<br><span class="mono">Steuer bis Freitag</span> landet unter Einmalig, mit <span class="mono">Arbeit …</span> bei Arbeit</p>
