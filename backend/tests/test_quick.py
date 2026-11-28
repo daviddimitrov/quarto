@@ -78,3 +78,9 @@ def test_kaputter_body_und_fehler(profile, monkeypatch):
 
     monkeypatch.setattr(api, "quick_add", boom)
     assert api.lambda_handler(event, None)["statusCode"] == 500
+
+
+def test_arbeit_nur_als_eigenes_wort(profile):
+    key = make_key(profile)
+    assert "Einmalig" in quick("Arbeitsvertrag lesen", key)[1]
+    assert "Arbeit" in quick("arbeit, Folien bauen", key)[1]

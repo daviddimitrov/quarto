@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-from collect_today import query_all, table
+from collect_today import AWS_CONFIG, query_all, table
 
 VAPID_PARAM = os.environ.get("VAPID_PARAM", "/quarto/vapid")
 VAPID_SUB = os.environ.get("VAPID_SUB", "mailto:d.taureck@gmail.com")
@@ -42,7 +42,7 @@ def unb64u(text):
 @functools.cache
 def vapid_keys():
     """{"publicKey": ..., "privateKey": ...} aus SSM, pro Lambda-Instanz gecacht."""
-    ssm = boto3.client("ssm")
+    ssm = boto3.client("ssm", config=AWS_CONFIG)
     return json.loads(ssm.get_parameter(Name=VAPID_PARAM, WithDecryption=True)["Parameter"]["Value"])
 
 

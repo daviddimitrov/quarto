@@ -3,7 +3,7 @@ import * as cdk from 'aws-cdk-lib';
 import { ElevenMinutesStack } from '../lib/eleven-minutes-stack';
 
 const app = new cdk.App();
-new ElevenMinutesStack(app, 'ElevenMinutesStack', {
+const stack = new ElevenMinutesStack(app, 'ElevenMinutesStack', {
   /* If you don't specify 'env', this stack will be environment-agnostic.
    * Account/Region-dependent features and context lookups will not work,
    * but a single synthesized template can be deployed anywhere. */
@@ -18,3 +18,6 @@ new ElevenMinutesStack(app, 'ElevenMinutesStack', {
 
   /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
 });
+
+// Alle Ressourcen tragen das Projekt-Tag, etwa für die Kostenübersicht
+cdk.Tags.of(stack).add('project', 'quarto');

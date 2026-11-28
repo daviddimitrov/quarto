@@ -66,3 +66,12 @@ def test_best_match_und_join_names():
     assert other is None
     assert api.join_names(["a", "b", "c"]) == "a, b und c"
     assert api.normalize("Küche!") == "kueche"
+
+
+def test_parse_deadline_varianten():
+    today = date(2026, 11, 28)
+    assert api.parse_deadline("Steuer bis zum 3.12.", today) == ("Steuer", date(2026, 12, 3))
+    assert api.parse_deadline("Bis bis morgen", today) == ("Bis", date(2026, 11, 29))
+    assert api.parse_deadline("Brief bis 5. Januar 27", today) == ("Brief", date(2027, 1, 5))
+    assert api.parse_deadline("bis morgen", today) == ("bis morgen", None)
+    assert api.parse_deadline("Termin bis 31.2.", today) == ("Termin bis 31.2.", None)

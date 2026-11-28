@@ -316,10 +316,13 @@ MONTHS = {
 
 def parse_deadline(text, today_date):
     """'Steuer bis Freitag' -> ('Steuer', Datum). Wie parseDeadline im Frontend, plus Monatsnamen."""
-    m = re.match(r"^(.*\S)\s+bis\s+(?:zum\s+|zur\s+|am\s+)?(.+)$", text, re.IGNORECASE)
-    if not m:
+    # Letztes " bis " trennt Name und Termin, ohne Regex mit Backtracking
+    cut = text.lower().rfind(" bis ")
+    if cut <= 0 or not text[:cut].strip() or not text[cut + 5 :].strip():
         return text, None
-    name, when = m.group(1).strip(), m.group(2).strip().lower().rstrip(".")
+    name, when = text[:cut].strip(), text[cut + 5 :].strip().lower().rstrip(".")
+    for prefix in ("zum ", "zur ", "am "):
+        when = when.removeprefix(prefix).strip()
     d = None
     if when == "heute":
         d = today_date
@@ -435,8 +438,10 @@ def say_open(tasks, prefix=""):
 
 
 DONE_WORDS = r"\b(erledigt|fertig|gemacht|abhaken|abgehakt|hake|ab|ist|sind|habe|hab|ich|die|der|das|den)\b"
-LIST_PATTERN = r"^(was|welche|wie ?viel|liste|zeig|sag)\b|steht .*an|noch offen|noch zu tun|ansteht"
-DONE_PATTERN = r"\b(erledigt|fertig|gemacht|abhaken|abgehakt)\b|^hake\b"
+LIST_PATTERN = (
+    r"(?:^(?:was|welche|wie ?viel|liste|zeig|sag)\b)|(?:\bsteht\b.*\ban\b)|(?:noch offen)|(?:noch zu tun)|(?:ansteht)"
+)
+DONE_PATTERN = r"(?:\b(?:erledigt|fertig|gemacht|abhaken|abgehakt)\b)|(?:^hake\b)"
 TODAY_PATTERN = r"\b(auf heute|heute|hinzufuegen|hinzu|dazu)\b"
 
 
@@ -496,9 +501,8 @@ def quick_add(event):
 
     # Sonst: einmalige Aufgabe
     kontext = "privat"
-    m = re.match(r"^arbeit\b[\s:,.-]*(.*)$", text, re.IGNORECASE)
-    if m:
-        kontext, text = "arbeit", m.group(1).strip()
+    if text.lower().startswith("arbeit") and (len(text) == 6 or not text[6].isalnum()):
+        kontext, text = "arbeit", text[6:].lstrip(" \t:,.-").strip()
     if not text:
         return 400, "Ich habe nichts verstanden."
     name, deadline = parse_deadline(text, today())

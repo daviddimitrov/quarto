@@ -5,8 +5,11 @@ from zoneinfo import ZoneInfo
 
 import boto3
 from boto3.dynamodb.conditions import Attr, Key
+from botocore.config import Config
 
-table = boto3.resource("dynamodb").Table(os.environ.get("TABLE_NAME", "quarto"))
+# Feste Timeouts, damit ein hängender Aufruf nicht die ganze Lambda-Laufzeit frisst
+AWS_CONFIG = Config(connect_timeout=5, read_timeout=10, retries={"max_attempts": 3, "mode": "standard"})
+table = boto3.resource("dynamodb", config=AWS_CONFIG).Table(os.environ.get("TABLE_NAME", "quarto"))
 NO_VALUE = 10**9  # wie NULLS LAST in Postgres
 
 

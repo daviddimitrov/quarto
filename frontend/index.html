@@ -89,7 +89,7 @@
                         <div id="evergreen-list" class="list"></div>
                         <form id="evergreen-add" class="quick dashed" autocomplete="off">
                             <i class="bi bi-plus-lg"></i>
-                            <input id="evergreenInput" type="text" placeholder="Evergreen: duschen, müll" enterkeyhint="done">
+                            <input id="evergreenInput" type="text" aria-label="Neuer Evergreen" placeholder="Evergreen: duschen, müll" enterkeyhint="done">
                             <button type="button" class="info-btn" data-info="Dinge ohne Termin, die immer wieder anfallen.<br>Ein Tipp auf den Chip in <b>Heute</b> setzt sie auf heute. Unerledigt verfallen sie nachts, der Evergreen bleibt.<br>Mehrere mit Komma trennen." aria-label="Hilfe"><i class="bi bi-info-circle"></i></button>
                         </form>
                     </section>
@@ -105,7 +105,7 @@
                     <div id="long-list" class="list long"></div>
                     <form id="long-add" class="quick dashed" autocomplete="off">
                         <i class="bi bi-plus-lg"></i>
-                        <input id="longInput" type="text" placeholder="Einmalig: Steuer bis 31.7." enterkeyhint="done">
+                        <input id="longInput" type="text" aria-label="Neue einmalige Aufgabe" placeholder="Einmalig: Steuer bis 31.7." enterkeyhint="done">
                         <kbd class="key-hint">N</kbd>
                         <button type="button" class="info-btn" data-info="Mehrere To-dos mit Komma trennen.<br>Deadline mit <b>bis</b>: bis morgen, bis fr, bis 3.12., bis 3.12.2027<br>Ab zwei Tagen vorher wird sie orange." aria-label="Hilfe"><i class="bi bi-info-circle"></i></button>
                     </form>
@@ -128,7 +128,7 @@
                 <div class="media-search">
                     <div class="quick">
                         <i class="bi bi-search"></i>
-                        <input id="mediaSearch" type="search" placeholder="Film oder Serie hinzufügen" autocomplete="off" enterkeyhint="search">
+                        <input id="mediaSearch" type="search" aria-label="Film oder Serie suchen" placeholder="Film oder Serie hinzufügen" autocomplete="off" enterkeyhint="search">
                     </div>
                     <div id="media-results" class="media-results" hidden></div>
                     <div id="media-seasons" class="media-seasons" hidden></div>
@@ -212,7 +212,7 @@
                     <p class="muted small">Was in Planta zu gießen oder zu düngen ist, steht jeden Morgen als ASAP-Aufgabe ohne Dauer auf heute, eine pro Pflanze mit Raum. Abhaken hakt auch in Planta ab. Braucht Planta Premium.</p>
                     <div id="plantaConnect" hidden>
                         <p class="small">Code auf <span class="mono">getplanta.com/apps/manage</span> erzeugen und hier einfügen:</p>
-                        <div class="keybox"><input type="text" id="plantaCode" class="mono" placeholder="Code" autocomplete="off"><button type="button" class="btn primary" id="plantaConnectButton">Verbinden</button></div>
+                        <div class="keybox"><input type="text" id="plantaCode" aria-label="Planta-Verbindungscode" class="mono" placeholder="Code" autocomplete="off"><button type="button" class="btn primary" id="plantaConnectButton">Verbinden</button></div>
                     </div>
                     <div id="plantaConnected" class="actions start" hidden>
                         <button type="button" class="btn" id="plantaSync">Jetzt abgleichen</button>

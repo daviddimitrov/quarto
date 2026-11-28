@@ -144,3 +144,8 @@ def test_taeglicher_lauf_meldet_heutige_starts(profile, db, no_network):
     titles = [m["title"] for m in no_network]
     assert titles == ["Heute neu: Heute im Kino"]
     assert "Neuer Termin: Serie Staffel 2" in no_network[0]["body"]
+
+
+def test_kurzdatum_kaputt():
+    assert media.short_date("kaputt") == "kaputt"
+    assert media.short_date(None) == ""
