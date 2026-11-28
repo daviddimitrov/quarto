@@ -1286,7 +1286,7 @@ function testPush() {
 // ---------- Benachrichtigungen ----------
 
 const NOTIF_DAYS = { taeglich: 'Täglich', werktags: 'Mo–Fr', wochenende: 'Sa–So' };
-const NOTIF_KINDS = { morgen: 'ASAP und Deadlines', offen: 'Was noch offen ist' };
+const NOTIF_KINDS = { morgen: 'ASAP und Deadlines', offen: 'Was noch offen ist', aufwand: 'Aufwand heute' };
 
 function notifRow(n) {
     const options = (map, value) => Object.entries(map)
