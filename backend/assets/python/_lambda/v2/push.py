@@ -191,7 +191,7 @@ DEFAULT_NOTIFICATIONS = [
     {"time": "19:00", "days": "taeglich", "kind": "offen"},
 ]
 DAYS = {"taeglich": range(7), "werktags": range(5), "wochenende": (5, 6)}
-KINDS = ("morgen", "offen")
+KINDS = ("morgen", "offen", "aufwand")
 
 
 def notifications_of(profile):
@@ -211,8 +211,22 @@ def open_message(items):
     return {"title": title, "body": ", ".join(t["name"] for t in open_tasks), "url": APP_URL}
 
 
+def effort_message(items):
+    """Nur die Minuten der offenen privaten Aufgaben von heute. None, wenn nichts offen ist."""
+    open_tasks = [i for i in items if i["SK"].startswith("TASK#") and i.get("today") == 1
+                  and i.get("kontext", "privat") == "privat"]
+    if not open_tasks:
+        return None
+    minutes = sum(int(t.get("duration") or 0) for t in open_tasks)
+    return {"title": f"Heute {minutes} min", "body": "", "url": APP_URL}
+
+
 def build_message(kind, items, today):
-    return open_message(items) if kind == "offen" else morning_message(items, today)
+    if kind == "offen":
+        return open_message(items)
+    if kind == "aufwand":
+        return effort_message(items)
+    return morning_message(items, today)
 
 
 def lambda_handler(event, context):

@@ -467,6 +467,7 @@ Auf der Konto-Seite stellt man bis zu zehn Benachrichtigungen ein. Jede hat:
 - **Inhalt:**
   - `morgen` („ASAP und Deadlines“): private ASAP-Aufgaben, die heute auf der Liste stehen oder fällig sind, einmalige Aufgaben mit Deadline heute und solche mit verpasster Deadline
   - `offen` („Was noch offen ist“): alle offenen privaten Aufgaben von heute, ASAP zuerst, mit Summe der Minuten, etwa „Noch 3 Aufgaben · 12 min“
+  - `aufwand` („Aufwand heute“): nur die Summe der Minuten der offenen privaten Aufgaben von heute, etwa „Heute 95 min“
 
 Die Einstellungen gelten für alle Geräte, Push selbst wird pro Gerät aktiviert. Es kommt nur eine Mitteilung, wenn es etwas zu sagen gibt, und im Urlaub nie. Die erste Zeile ist der Titel, der Rest der Text. iOS zeigt den App-Namen selbst an („… from Quarto“), deshalb steht im Titel nicht noch einmal „Quarto“. Ein Tipp auf die Mitteilung öffnet Quarto.
 
