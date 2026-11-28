@@ -50,7 +50,7 @@ function refreshTokens() {
     const refreshToken = localStorage.getItem('quarto_refresh_token');
     if (!refreshToken) {
         logout();
-        return Promise.reject();
+        return Promise.reject(new Error('Nicht angemeldet'));
     }
     refreshing = Promise.resolve(cognitoCall('InitiateAuth', {
         AuthFlow: 'REFRESH_TOKEN_AUTH',
@@ -144,7 +144,7 @@ function logout() {
 
 // ---------- Kontext Privat/Arbeit ----------
 
-let allKontext = localStorage.getItem('quarto_all_kontext') || 'privat';
+let allKontext = localStorage.getItem('quarto_all_kontext') === 'arbeit' ? 'arbeit' : 'privat';
 
 function isDayView(view) {
     return view === 'today' || view === 'work';
@@ -204,8 +204,19 @@ function readCache(view) {
 }
 
 function writeCache(view, items) {
-    try { localStorage.setItem(cacheKey(view), JSON.stringify(items)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
+    storeJson(cacheKey(view), items);
     updateCounts();
+}
+
+// Schreibt nur reine JSON-Daten (Listen oder Objekte) in den Speicher, alles andere wird verworfen.
+// Die Daten kommen von der eigenen API, der Umweg über parse/stringify entfernt Funktionen,
+// Prototypen und Sonderwerte, damit nichts anderes als Daten im Cache landet.
+function storeJson(key, value) {
+    if (value === null || typeof value !== 'object') return;
+    try {
+        const clean = JSON.parse(JSON.stringify(value));
+        localStorage.setItem(key, JSON.stringify(clean));
+    } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
 }
 
 function readRaw(key) {
@@ -638,7 +649,7 @@ function flushPendingOnHide() {
                     'Authorization': 'Bearer ' + localStorage.getItem('quarto_id_token'),
                     ...(localStorage.getItem('quarto_device') ? { 'X-Quarto-Device': localStorage.getItem('quarto_device') } : {}),
                 },
-            });
+            }).catch(() => sendTaskAction(p.action, [id]));
         } catch (e) {
             sendTaskAction(p.action, [id]);
         }
@@ -678,7 +689,7 @@ function sendTaskAction(action, taskIds) {
             alert(`${failed} von ${taskIds.length} Aufgaben konnten nicht aktualisiert werden.`);
         }
         reloadCurrentView();
-    });
+    }).catch(err => console.error(err));
 }
 
 // Führt eine Aktion aus: Löschen sofort (hat schon eine Rückfrage), alles andere mit Rückgängig
@@ -789,11 +800,11 @@ function saveTaskEdit() {
     const taskId = $('#editTaskId').val();
     const isWork = kontextFor('all') === 'arbeit';
     const task = {
-        priorityLevel: { id: isWork ? null : parseInt($('#selectPriority').val()) },
+        priorityLevel: { id: isWork ? null : Number.parseInt($('#selectPriority').val(), 10) },
         name: $('#inputTask').val(),
         notiz: $('#inputNote').val().trim(),
         subtasks: linesToSubtasks($('#inputSubtasks').val(), editingSubtasks),
-        duration: isWork ? null : parseInt($('#inputDuration').val()),
+        duration: isWork ? null : Number.parseInt($('#inputDuration').val(), 10),
         dueDate: $('#pickDueDate').val(),
         rhythm: $('#inputFrequency').val().trim(),
         today: 0
@@ -986,7 +997,7 @@ function loadBudget() {
         method: 'GET',
         dataType: 'json',
         success: function (p) {
-            try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
+            storeJson(profileKey(), p);
             renderBudget();
         }
     });
@@ -1027,7 +1038,7 @@ function countDoneLocally(taskIds) {
         .reduce((sum, t) => sum + (Number(t.duration) || 0), 0);
     if (!minutes) return;
     p.doneToday = (Number(p.doneToday) || 0) + minutes;
-    try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
+    storeJson(profileKey(), p);
 }
 
 // ---------- Zähler in der Seitenleiste ----------
@@ -1177,14 +1188,14 @@ function loadAccount() {
         method: 'GET',
         dataType: 'json',
         success: function (p) {
-            try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
+            storeJson(profileKey(), p);
             $('#dailyLimit').val(p.dailyLimit);
             $('#maxLimit').val(p.maxLimit);
             $('#budgetToday').text(p.budgetToday);
             $('#vacationFrom').val(p.vacationFrom || '');
             $('#vacationTo').val(p.vacationTo || '');
             loadDemand();
-            renderPush();
+            void renderPush();
             renderNotifications(p.notifications);
             $('#notifMessage').text('');
             renderPlanta(!!p.plantaConnected);
@@ -1252,7 +1263,7 @@ function renderDemand(tasks) {
         .map(x => ({ ...x, perDay: Number(x.task.duration) / x.days }))
         .sort((a, b) => b.perDay - a.perDay);
     const total = items.reduce((sum, x) => sum + x.perDay, 0);
-    const daily = parseInt($('#dailyLimit').val()) || 0;
+    const daily = Number.parseInt($('#dailyLimit').val(), 10) || 0;
     const needed = Math.ceil(total);
 
     $('#demand').prop('hidden', items.length === 0);
@@ -1382,7 +1393,7 @@ async function enablePush() {
         // Muss als Erstes im Klick passieren, sonst blockiert iOS die Abfrage
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
-            renderPush('Ohne Erlaubnis keine Benachrichtigung.');
+            void renderPush('Ohne Erlaubnis keine Benachrichtigung.');
             return;
         }
         const reg = await navigator.serviceWorker.register('./sw.js');
@@ -1396,10 +1407,10 @@ async function enablePush() {
             contentType: 'application/json',
             data: JSON.stringify({ subscription: sub.toJSON() }),
         });
-        renderPush('Aktiv. Mit „Test senden“ kannst du es gleich ausprobieren.');
+        void renderPush('Aktiv. Mit „Test senden“ kannst du es gleich ausprobieren.');
     } catch (e) {
         console.error(e);
-        renderPush('Aktivieren hat nicht geklappt.');
+        void renderPush('Aktivieren hat nicht geklappt.');
     }
 }
 
@@ -1415,7 +1426,7 @@ async function disablePush() {
         await sub.unsubscribe();
     }
     await rememberDevice(null);
-    renderPush('Auf diesem Gerät aus.');
+    void renderPush('Auf diesem Gerät aus.');
 }
 
 function testPush() {
@@ -1437,9 +1448,9 @@ function notifRow(n) {
     const options = (map, value) => Object.entries(map)
         .map(([k, label]) => `<option value="${k}"${k === value ? ' selected' : ''}>${label}</option>`).join('');
     return `<div class="notif-row">
-        <input type="time" step="900" class="notif-time" value="${n.time || '07:30'}">
-        <select class="notif-days">${options(NOTIF_DAYS, n.days || 'taeglich')}</select>
-        <select class="notif-kind">${options(NOTIF_KINDS, n.kind || 'morgen')}</select>
+        <input type="time" step="900" class="notif-time" aria-label="Uhrzeit" value="${/^\d{2}:\d{2}$/.test(n.time) ? n.time : '07:30'}">
+        <select class="notif-days" aria-label="Tage">${options(NOTIF_DAYS, n.days || 'taeglich')}</select>
+        <select class="notif-kind" aria-label="Inhalt">${options(NOTIF_KINDS, n.kind || 'morgen')}</select>
         <button type="button" class="icon-btn small notif-remove" aria-label="Entfernen"><i class="bi bi-x-lg"></i></button>
     </div>`;
 }
@@ -1477,13 +1488,13 @@ function saveAccount() {
         contentType: 'application/json',
         dataType: 'json',
         data: JSON.stringify({
-            dailyLimit: parseInt($('#dailyLimit').val()),
-            maxLimit: parseInt($('#maxLimit').val()),
+            dailyLimit: Number.parseInt($('#dailyLimit').val(), 10),
+            maxLimit: Number.parseInt($('#maxLimit').val(), 10),
             vacationFrom: $('#vacationFrom').val() || null,
             vacationTo: $('#vacationTo').val() || null,
         }),
         success: function (p) {
-            try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
+            storeJson(profileKey(), p);
             $('#budgetToday').text(p.budgetToday);
             showAccountMessage('Gespeichert.', true);
             loadDemand();
@@ -1516,9 +1527,11 @@ function isoDate(d) {
 
 // "Diagramm bis fr" -> { name: "Diagramm", deadline: "2026-11-27" }
 function parseDeadline(text) {
-    const m = text.match(/^(.*\S)\s+bis\s+(.+)$/i);
-    if (!m) return { name: text, deadline: null };
-    const when = m[2].trim().toLowerCase();
+    // Letztes " bis " trennt Name und Termin
+    const cut = text.toLowerCase().lastIndexOf(' bis ');
+    const name = cut > 0 ? text.slice(0, cut).trim() : '';
+    const when = cut > 0 ? text.slice(cut + 5).trim().toLowerCase() : '';
+    if (!name || !when) return { name: text, deadline: null };
     const today = startOfToday();
     let d = null;
     if (when === 'heute') d = today;
@@ -1534,8 +1547,8 @@ function parseDeadline(text) {
             if (!dm[3] && d < today) d.setFullYear(year + 1);
         }
     }
-    if (!d || isNaN(d)) return { name: text, deadline: null };
-    return { name: m[1].trim(), deadline: isoDate(d) };
+    if (!d || Number.isNaN(d.getTime())) return { name: text, deadline: null };
+    return { name: name, deadline: isoDate(d) };
 }
 
 function daysUntil(iso) {
@@ -1607,7 +1620,7 @@ function createQuick(kind, names) {
             alert(`${failed} von ${names.length} To-dos konnten nicht angelegt werden.`);
         }
         reloadCurrentView();
-    });
+    }).catch(err => console.error(err));
 }
 
 // ---------- Evergreens ----------
@@ -1671,7 +1684,7 @@ function evergreenToToday(id) {
     const key = `quarto_today_privat_${$.cookie('user_id')}`;
     const today = readRaw(key) || [];
     today.push({ id: `tmp-${Date.now()}`, name: ev.name, spontan: true, today: 1, priorityLevel: { id: null, name: null } });
-    try { localStorage.setItem(key, JSON.stringify(today)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
+    storeJson(key, today);
     updateCounts();
     renderEvergreens(readCache('evergreen') || []);
     $.ajax({
@@ -1701,7 +1714,7 @@ function addEvergreens() {
     Promise.allSettled(requests).then(results => {
         if (results.some(r => r.status === 'rejected')) alert('Nicht alle Evergreens konnten angelegt werden.');
         reloadCurrentView();
-    });
+    }).catch(err => console.error(err));
 }
 
 function renameEvergreen(id) {
@@ -1730,7 +1743,7 @@ function loadMedia() {
         method: 'GET',
         dataType: 'json',
         success: items => {
-            try { localStorage.setItem(mediaKey(), JSON.stringify(items)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
+            storeJson(mediaKey(), items);
             if (currentView === 'media') renderMedia(items);
         },
     });
@@ -1840,7 +1853,7 @@ function loadSuggestions(force) {
         dataType: 'json',
         timeout: 30000,
         success: list => {
-            try { localStorage.setItem(suggestKey(), JSON.stringify(list)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
+            storeJson(suggestKey(), list);
             if (currentView === 'media') renderSuggestions(list);
         },
         error: () => { if (!cached || force) $('#media-suggestions').html('<div class="empty">Vorschläge nicht erreichbar</div>'); },
@@ -1871,7 +1884,7 @@ function dropSuggestion(card) {
     const type = card.getAttribute('data-type');
     const id = Number(card.getAttribute('data-id'));
     const rest = (readRaw(suggestKey()) || []).filter(s => !(s.type === type && s.tmdbId === id));
-    try { localStorage.setItem(suggestKey(), JSON.stringify(rest)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
+    storeJson(suggestKey(), rest);
     $(card).remove();
     if (!rest.length) renderSuggestions(rest);
 }
@@ -1888,7 +1901,7 @@ function addMedia(type, tmdbId, season) {
         data: JSON.stringify({ type, tmdbId, season }),
         success: m => {
             const items = (readRaw(mediaKey()) || []).filter(x => x.id !== m.id).concat([m]);
-            try { localStorage.setItem(mediaKey(), JSON.stringify(items)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
+            storeJson(mediaKey(), items);
             renderMedia(items);
             $('#mediaMessage').text(`${m.title} hinzugefügt.`);
         },
@@ -1921,7 +1934,7 @@ function toggleWatched(id) {
     if (m) {
         m.watched = !m.watched;
         m.available = !m.watched && !!m.releaseDate && daysUntil(m.releaseDate) <= 0;
-        try { localStorage.setItem(mediaKey(), JSON.stringify(items)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
+        storeJson(mediaKey(), items);
         renderMedia(items);
     }
     $.ajax({
@@ -1936,7 +1949,7 @@ function deleteMedia(id) {
     const m = items.find(x => x.id === id);
     if (!window.confirm(`${m ? m.title : 'Eintrag'} entfernen?`)) return;
     const rest = items.filter(x => x.id !== id);
-    try { localStorage.setItem(mediaKey(), JSON.stringify(rest)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
+    storeJson(mediaKey(), rest);
     renderMedia(rest);
     $.ajax({
         url: apiPrefix + `user/${$.cookie('user_id')}/media/${encodeURIComponent(id)}`,
@@ -1952,7 +1965,7 @@ function refreshMedia() {
         method: 'POST',
         dataType: 'json',
         success: r => {
-            try { localStorage.setItem(mediaKey(), JSON.stringify(r.items)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
+            storeJson(mediaKey(), r.items);
             renderMedia(r.items);
             $('#mediaMessage').text(r.changes.length
                 ? 'Geändert: ' + r.changes.map(c => c.title + (c.season ? ` S${c.season}` : '')).join(', ')
@@ -1976,7 +1989,7 @@ function escapeHtml(text) {
 // ---------- Bedienung ----------
 
 function initUi() {
-    syncDevice();
+    void syncDevice();
     setLongCollapsed(localStorage.getItem('quarto_long_collapsed') === '1');
     updateCounts();
 
@@ -2095,12 +2108,14 @@ function initUi() {
     $('#notifSave').on('click', saveNotifications);
     $('#quickKeyCopy').on('click', function () {
         const btn = this;
-        navigator.clipboard.writeText($('#quickKey').text()).then(() => { btn.textContent = 'Kopiert'; });
+        navigator.clipboard.writeText($('#quickKey').text())
+            .then(() => { btn.textContent = 'Kopiert'; })
+            .catch(() => { btn.textContent = 'Bitte von Hand kopieren'; });
     });
     $(document).on('click', '#demand-apply', function () {
         const value = Math.min(240, Number(this.textContent.replace(/\D/g, '')));
         $('#dailyLimit').val(value);
-        if ((parseInt($('#maxLimit').val()) || 0) < value) $('#maxLimit').val(value);
+        if ((Number.parseInt($('#maxLimit').val(), 10) || 0) < value) $('#maxLimit').val(value);
         saveAccount();
     });
 

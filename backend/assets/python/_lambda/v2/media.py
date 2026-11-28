@@ -18,7 +18,7 @@ import boto3
 from boto3.dynamodb.conditions import Attr
 
 import push
-from collect_today import query_all, table
+from collect_today import AWS_CONFIG, query_all, table
 
 TMDB_PARAM = os.environ.get("TMDB_PARAM", "/quarto/tmdb")
 API = "https://api.themoviedb.org/3"
@@ -30,7 +30,7 @@ def token():
     """TMDB-Token aus der Umgebung, sonst aus SSM. Pro Lambda-Instanz gecacht."""
     if os.environ.get("TMDB_TOKEN"):
         return os.environ["TMDB_TOKEN"].strip()
-    ssm = boto3.client("ssm")
+    ssm = boto3.client("ssm", config=AWS_CONFIG)
     return ssm.get_parameter(Name=TMDB_PARAM, WithDecryption=True)["Parameter"]["Value"].strip()
 
 
@@ -576,8 +576,10 @@ def where_short(item):
 
 
 def short_date(iso):
-    _, m, d = (int(x) for x in iso.split("-"))
-    return f"{d}.{m}."
+    parts = str(iso or "").split("-")
+    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+        return str(iso or "")
+    return f"{int(parts[2])}.{int(parts[1])}."
 
 
 def scheduled_handler(event, context):
