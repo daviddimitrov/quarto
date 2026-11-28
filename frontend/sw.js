@@ -3,8 +3,8 @@ self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
 
 self.addEventListener('push', event => {
-    let data = {};
-    try { data = event.data ? event.data.json() : {}; } catch (e) { data = { body: event.data && event.data.text() }; }
+    let data;
+    try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data && event.data.text() }; }
     const jobs = [self.registration.showNotification(data.title || 'Quarto', {
         body: data.body || '',
         icon: 'assets/images/apple-touch-icon.png',
