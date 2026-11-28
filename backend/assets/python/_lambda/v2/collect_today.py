@@ -103,9 +103,9 @@ def collect_for_user(user_id, nightly):
     if nightly:
         # Offen gebliebene private Minuten von gestern wandern auf heute, gedeckelt
         open_minutes = sum(
-            int(t.get("duration") or 0) for t in tasks
-            if kontext(t) == "privat" and t.get("today") == 1
-            and not t.get("spontan") and not t.get("long_term")
+            int(t.get("duration") or 0)
+            for t in tasks
+            if kontext(t) == "privat" and t.get("today") == 1 and not t.get("spontan") and not t.get("long_term")
         )
         budget = base if on_vacation else min(maximum, base + open_minutes)
         table.update_item(
@@ -125,16 +125,23 @@ def collect_for_user(user_id, nightly):
         tasks = [t for t in tasks if t not in expired]
 
     def is_due(t):
-        return (not t.get("spontan") and not t.get("long_term") and not t.get("evergreen")
-                and t.get("due_date") and t["due_date"] <= today)
+        return (
+            not t.get("spontan")
+            and not t.get("long_term")
+            and not t.get("evergreen")
+            and t.get("due_date")
+            and t["due_date"] <= today
+        )
 
     # Privat: nach Priorität, Fälligkeit und Rhythmus bis zum Zeitbudget
     private = [t for t in tasks if kontext(t) == "privat" and is_due(t)]
-    private.sort(key=lambda t: (
-        int(t.get("priority") or NO_VALUE),
-        t["due_date"],
-        int(t.get("rhythm") or NO_VALUE) if str(t.get("rhythm") or "").isdigit() else NO_VALUE,
-    ))
+    private.sort(
+        key=lambda t: (
+            int(t.get("priority") or NO_VALUE),
+            t["due_date"],
+            int(t.get("rhythm") or NO_VALUE) if str(t.get("rhythm") or "").isdigit() else NO_VALUE,
+        )
+    )
     chosen, total = set(), 0
 
     # Erst was zu lange festhängt, am stärksten überfällige zuerst. Die erste
@@ -162,9 +169,9 @@ def collect_for_user(user_id, nightly):
     # Langfristige Tasks zwei Tage vor der Deadline nach oben holen, ohne Budget
     soon = (now.date() + timedelta(days=2)).isoformat()
     deadline_tasks = [
-        t for t in tasks
-        if t.get("long_term") and t.get("deadline") and t["deadline"] <= soon
-        and (kontext(t) == "privat" or workday)
+        t
+        for t in tasks
+        if t.get("long_term") and t.get("deadline") and t["deadline"] <= soon and (kontext(t) == "privat" or workday)
     ]
     chosen.update(t["SK"] for t in deadline_tasks)
 
@@ -182,9 +189,15 @@ def collect_for_user(user_id, nightly):
                 UpdateExpression="SET today = :v",
                 ExpressionAttributeValues={":v": new},
             )
-    return {"selected": len(chosen), "minutes": total, "budget": budget,
-            "arbeit": len(work), "deadline": len(deadline_tasks),
-            "urlaub": on_vacation, "verschoben": shifted}
+    return {
+        "selected": len(chosen),
+        "minutes": total,
+        "budget": budget,
+        "arbeit": len(work),
+        "deadline": len(deadline_tasks),
+        "urlaub": on_vacation,
+        "verschoben": shifted,
+    }
 
 
 def response(status, body):
@@ -209,7 +222,9 @@ def lambda_handler(event, context):
         uid = p["PK"].removeprefix("USER#")
         results[uid] = collect_for_user(uid, nightly=True)
     # Danach die fälligen Pflanzen aus Planta, ohne Budget auf heute
-    import planta
+    # Erst hier, weil planta selbst collect_today importiert
+    import planta  # noqa: PLC0415
+
     results["planta"] = planta.sync_all()
     print(json.dumps(results, default=str))
     return results

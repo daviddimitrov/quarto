@@ -1,4 +1,5 @@
-let apiPrefix = "https://vs7ubni3p3.execute-api.eu-central-1.amazonaws.com/";
+/* exported checkAuth, login, initUi */
+const apiPrefix = "https://vs7ubni3p3.execute-api.eu-central-1.amazonaws.com/";
 
 // Aktuelle Ansicht: 'today', 'work', 'all' oder 'account'
 let currentView = 'today';
@@ -159,7 +160,7 @@ function kontextFor(view) {
 function setAllKontext(kontext) {
     commitPending();
     allKontext = kontext;
-    try { localStorage.setItem('quarto_all_kontext', kontext); } catch (e) {}
+    try { localStorage.setItem('quarto_all_kontext', kontext); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
     reloadCurrentView();
 }
 
@@ -203,7 +204,7 @@ function readCache(view) {
 }
 
 function writeCache(view, items) {
-    try { localStorage.setItem(cacheKey(view), JSON.stringify(items)); } catch (e) {}
+    try { localStorage.setItem(cacheKey(view), JSON.stringify(items)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
     updateCounts();
 }
 
@@ -485,7 +486,7 @@ function snapshotCaches() {
 
 function restoreCaches(snapshot) {
     snapshot.forEach(([k, v]) => {
-        try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {}
+        try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
     });
 }
 
@@ -969,7 +970,7 @@ function renderLong(items) {
 
 function setLongCollapsed(collapsed) {
     $('#long-section').toggleClass('collapsed', collapsed);
-    try { localStorage.setItem('quarto_long_collapsed', collapsed ? '1' : ''); } catch (e) {}
+    try { localStorage.setItem('quarto_long_collapsed', collapsed ? '1' : ''); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
 }
 
 // ---------- Budget ----------
@@ -985,7 +986,7 @@ function loadBudget() {
         method: 'GET',
         dataType: 'json',
         success: function (p) {
-            try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch (e) {}
+            try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
             renderBudget();
         }
     });
@@ -1026,7 +1027,7 @@ function countDoneLocally(taskIds) {
         .reduce((sum, t) => sum + (Number(t.duration) || 0), 0);
     if (!minutes) return;
     p.doneToday = (Number(p.doneToday) || 0) + minutes;
-    try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch (e) {}
+    try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
 }
 
 // ---------- Zähler in der Seitenleiste ----------
@@ -1176,7 +1177,7 @@ function loadAccount() {
         method: 'GET',
         dataType: 'json',
         success: function (p) {
-            try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch (e) {}
+            try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
             $('#dailyLimit').val(p.dailyLimit);
             $('#maxLimit').val(p.maxLimit);
             $('#budgetToday').text(p.budgetToday);
@@ -1235,7 +1236,7 @@ function redistribute() {
         success: r => {
             const until = r.until ? new Date(r.until).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' }) : '';
             showAccountMessage(r.moved ? `${r.moved} Aufgaben bis ${until} verteilt.` : 'Nichts überfällig.', true);
-            try { localStorage.removeItem(`quarto_all_privat_${$.cookie('user_id')}`); } catch (e) {}
+            try { localStorage.removeItem(`quarto_all_privat_${$.cookie('user_id')}`); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
             loadDemand();
         },
         error: () => showAccountMessage('Verteilen hat nicht geklappt.', false),
@@ -1351,12 +1352,12 @@ async function rememberDevice(sub) {
         const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sub.endpoint));
         const hex = [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2, '0')).join('');
         localStorage.setItem('quarto_device', hex.slice(0, 32));
-    } catch (e) {}
+    } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
 }
 
 async function syncDevice() {
     if (!pushSupported()) return;
-    try { await rememberDevice(await currentSubscription()); } catch (e) {}
+    try { await rememberDevice(await currentSubscription()); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
 }
 
 async function renderPush(message) {
@@ -1482,7 +1483,7 @@ function saveAccount() {
             vacationTo: $('#vacationTo').val() || null,
         }),
         success: function (p) {
-            try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch (e) {}
+            try { localStorage.setItem(profileKey(), JSON.stringify(p)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
             $('#budgetToday').text(p.budgetToday);
             showAccountMessage('Gespeichert.', true);
             loadDemand();
@@ -1670,7 +1671,7 @@ function evergreenToToday(id) {
     const key = `quarto_today_privat_${$.cookie('user_id')}`;
     const today = readRaw(key) || [];
     today.push({ id: `tmp-${Date.now()}`, name: ev.name, spontan: true, today: 1, priorityLevel: { id: null, name: null } });
-    try { localStorage.setItem(key, JSON.stringify(today)); } catch (e) {}
+    try { localStorage.setItem(key, JSON.stringify(today)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
     updateCounts();
     renderEvergreens(readCache('evergreen') || []);
     $.ajax({
@@ -1729,7 +1730,7 @@ function loadMedia() {
         method: 'GET',
         dataType: 'json',
         success: items => {
-            try { localStorage.setItem(mediaKey(), JSON.stringify(items)); } catch (e) {}
+            try { localStorage.setItem(mediaKey(), JSON.stringify(items)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
             if (currentView === 'media') renderMedia(items);
         },
     });
@@ -1839,7 +1840,7 @@ function loadSuggestions(force) {
         dataType: 'json',
         timeout: 30000,
         success: list => {
-            try { localStorage.setItem(suggestKey(), JSON.stringify(list)); } catch (e) {}
+            try { localStorage.setItem(suggestKey(), JSON.stringify(list)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
             if (currentView === 'media') renderSuggestions(list);
         },
         error: () => { if (!cached || force) $('#media-suggestions').html('<div class="empty">Vorschläge nicht erreichbar</div>'); },
@@ -1870,7 +1871,7 @@ function dropSuggestion(card) {
     const type = card.getAttribute('data-type');
     const id = Number(card.getAttribute('data-id'));
     const rest = (readRaw(suggestKey()) || []).filter(s => !(s.type === type && s.tmdbId === id));
-    try { localStorage.setItem(suggestKey(), JSON.stringify(rest)); } catch (e) {}
+    try { localStorage.setItem(suggestKey(), JSON.stringify(rest)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
     $(card).remove();
     if (!rest.length) renderSuggestions(rest);
 }
@@ -1887,7 +1888,7 @@ function addMedia(type, tmdbId, season) {
         data: JSON.stringify({ type, tmdbId, season }),
         success: m => {
             const items = (readRaw(mediaKey()) || []).filter(x => x.id !== m.id).concat([m]);
-            try { localStorage.setItem(mediaKey(), JSON.stringify(items)); } catch (e) {}
+            try { localStorage.setItem(mediaKey(), JSON.stringify(items)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
             renderMedia(items);
             $('#mediaMessage').text(`${m.title} hinzugefügt.`);
         },
@@ -1920,7 +1921,7 @@ function toggleWatched(id) {
     if (m) {
         m.watched = !m.watched;
         m.available = !m.watched && !!m.releaseDate && daysUntil(m.releaseDate) <= 0;
-        try { localStorage.setItem(mediaKey(), JSON.stringify(items)); } catch (e) {}
+        try { localStorage.setItem(mediaKey(), JSON.stringify(items)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
         renderMedia(items);
     }
     $.ajax({
@@ -1935,7 +1936,7 @@ function deleteMedia(id) {
     const m = items.find(x => x.id === id);
     if (!window.confirm(`${m ? m.title : 'Eintrag'} entfernen?`)) return;
     const rest = items.filter(x => x.id !== id);
-    try { localStorage.setItem(mediaKey(), JSON.stringify(rest)); } catch (e) {}
+    try { localStorage.setItem(mediaKey(), JSON.stringify(rest)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
     renderMedia(rest);
     $.ajax({
         url: apiPrefix + `user/${$.cookie('user_id')}/media/${encodeURIComponent(id)}`,
@@ -1951,7 +1952,7 @@ function refreshMedia() {
         method: 'POST',
         dataType: 'json',
         success: r => {
-            try { localStorage.setItem(mediaKey(), JSON.stringify(r.items)); } catch (e) {}
+            try { localStorage.setItem(mediaKey(), JSON.stringify(r.items)); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
             renderMedia(r.items);
             $('#mediaMessage').text(r.changes.length
                 ? 'Geändert: ' + r.changes.map(c => c.title + (c.season ? ` S${c.season}` : '')).join(', ')
@@ -2032,7 +2033,7 @@ function initUi() {
     });
     $('#media-groups').on('click', '.media-toggle', function () {
         const $g = $(this).closest('.media-group').toggleClass('collapsed');
-        try { localStorage.setItem('quarto_media_watched_open', $g.hasClass('collapsed') ? '' : '1'); } catch (e) {}
+        try { localStorage.setItem('quarto_media_watched_open', $g.hasClass('collapsed') ? '' : '1'); } catch { /* Speicher kann voll oder gesperrt sein, die App läuft dann ohne */ }
     });
     $('#mediaRefresh').on('click', refreshMedia);
     $('#suggestRefresh').on('click', () => loadSuggestions(true));

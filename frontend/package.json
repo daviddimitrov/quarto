@@ -1,0 +1,13 @@
+{
+  "name": "quarto-frontend",
+  "private": true,
+  "description": "Nur für Linting, die App selbst braucht keinen Build",
+  "scripts": {
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0"
+  }
+}
