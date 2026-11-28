@@ -604,6 +604,12 @@ Erledigt, Nicht heute, Morgen, Nächste Woche und Auf heute wirken sofort in der
 - Solange eine Aktion offen ist, pausiert der Sync, sonst käme die Aufgabe vom Server kurz zurück.
 - Löschen hat schon eine Rückfrage und geht sofort raus.
 
+### Ersatz statt verschobener Aufgabe
+
+Wird in Heute eine einzelne Aufgabe auf Nicht heute, Morgen oder Nächste Woche gesetzt, zeigt der Hinweis darunter bis zu drei Aufgaben unter „Stattdessen:“, und der Balken läuft dann 10 statt 5 Sekunden. Ein Tipp schickt die Verschiebung ab und holt die gewählte Aufgabe auf heute. Gedacht für Tage, an denen etwas gerade nicht geht, etwa eine Aufgabe draußen.
+
+`GET /user/{userId}/tasks/replacements?minutes=<frei>&exclude=<id>` sucht unter den privaten Aufgaben, die nicht auf heute stehen, ohne Einmalige, Evergreens und Spontane. Passen muss die Dauer in die frei gewordenen Minuten plus 5, bei einer Aufgabe ohne Dauer zählt die Standarddauer. Fällige zuerst, nach Priorität und Datum, danach was demnächst ansteht, frühestes zuerst.
+
 ### Drag & Drop
 
 SortableJS auf beiden Listen derselben Gruppe. Auf dem iPhone startet das Ziehen nach 220 ms Gedrückthalten, auf dem Mac sofort. Kästchen, Menü, Unteraufgaben und Links starten kein Ziehen.

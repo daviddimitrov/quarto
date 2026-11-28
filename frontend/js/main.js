@@ -496,7 +496,41 @@ function showUndo(text) {
 }
 
 function hideUndo() {
-    $('#undo').prop('hidden', true).removeClass('run');
+    $('#undo').prop('hidden', true).removeClass('run').css('--toast-ms', '');
+    $('#undo-alts').prop('hidden', true).empty();
+}
+
+// Fällt heute etwas weg, schlägt der Toast bis zu drei Aufgaben vor, die in die frei gewordene Zeit passen
+const ALTS_MS = 10000;
+const REPLACE_ACTIONS = ['not-today', 'tomorrow', 'next-week'];
+
+function offerReplacements(task) {
+    const forPending = pending;
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/tasks/replacements`,
+        data: { minutes: task.duration || 0, exclude: task.id },
+        dataType: 'json',
+    }).then(alts => {
+        if (pending !== forPending || !alts || !alts.length) return;
+        const $alts = $('#undo-alts').empty().append('<span class="alts-label">Stattdessen:</span>');
+        alts.forEach(a => $alts.append(
+            $('<button type="button">').attr('data-id', a.id)
+                .text(a.name).append(a.duration ? `<span class="mono">${a.duration}'</span>` : '')
+        ));
+        $alts.prop('hidden', false);
+        // Mehr Zeit zum Lesen und Auswählen
+        clearTimeout(pending.timer);
+        pending.timer = setTimeout(commitPending, ALTS_MS);
+        const $t = $('#undo');
+        $t.css('--toast-ms', ALTS_MS / 1000 + 's').removeClass('run');
+        void $t[0].offsetWidth;
+        $t.addClass('run');
+    }).catch(() => {});
+}
+
+function takeReplacement(id) {
+    commitPending();
+    sendTaskAction('to-today', [String(id)]);
 }
 
 function commitPending() {
@@ -594,6 +628,9 @@ function runTaskAction(action, taskIds) {
     applyTaskAction(action, taskIds);
     pending = { action, ids: taskIds, snapshot, timer: setTimeout(commitPending, UNDO_MS) };
     showUndo(`${UNDO_LABELS[action]}: ${task ? task.name : ''}`);
+    if (task && currentView === 'today' && taskIds.length === 1 && REPLACE_ACTIONS.includes(action)) {
+        offerReplacements(task);
+    }
 }
 
 function completeTask(row) {
@@ -1919,6 +1956,7 @@ function initUi() {
         dropSuggestion(card);
     });
     $('#undo-btn').on('click', undoPending);
+    $('#undo-alts').on('click', 'button', function () { takeReplacement($(this).attr('data-id')); });
     $('#task-form').on('submit', function (event) {
         event.preventDefault();
         submitTaskForm();

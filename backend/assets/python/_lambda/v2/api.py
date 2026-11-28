@@ -203,6 +203,31 @@ def list_tasks(p, body, mode="all"):
     return 200, [to_dto(t, user_id, profile) for t in tasks]
 
 
+def replacements(p, body):
+    """Bis zu drei private Aufgaben, die in frei gewordene Minuten passen, wenn heute etwas wegfällt.
+    Erst Fälliges nach Priorität und Datum, dann was demnächst ansteht, frühestes zuerst."""
+    user_id = p["userId"]
+    profile = get_profile(user_id)
+    if profile is None:
+        return 404, {"message": "User not found"}
+    try:
+        minutes = int(p.get("minutes") or 0)
+    except ValueError:
+        minutes = 0
+    # Fällt eine Aufgabe ohne Dauer weg, gilt die Standarddauer
+    limit = (minutes or int(profile.get("default_duration", 15))) + 5
+    now = today().isoformat()
+    tasks = [t for t in query_all(f"USER#{user_id}") if t["SK"].startswith("TASK#")
+             and t.get("kontext", "privat") == "privat" and t.get("today") != 1
+             and not t.get("spontan") and not t.get("long_term") and not t.get("evergreen")
+             and t.get("due_date") and str(t["id"]) != str(p.get("exclude"))
+             and int(t.get("duration") or 0) <= limit]
+    tasks.sort(key=lambda t: (t["due_date"] > now,
+                              int(t.get("priority") or NO_VALUE) if t["due_date"] <= now else 0,
+                              t["due_date"]))
+    return 200, [to_dto(t, user_id, profile) for t in tasks[:3]]
+
+
 def collect(p, body):
     result = collect_for_user(p["userId"], nightly=False)
     if result is None:
@@ -759,6 +784,7 @@ ROUTES = {
     "GET /user/{userId}/tasks/today": lambda p, b: list_tasks(p, b, mode="today"),
     "GET /user/{userId}/tasks/long": lambda p, b: list_tasks(p, b, mode="long"),
     "PATCH /user/{userId}/tasks/today": collect,
+    "GET /user/{userId}/tasks/replacements": replacements,
     "POST /task": create_task,
     "GET /user/{userId}/task/{taskId}": get_task,
     "PUT /user/{userId}/task/{taskId}": update_task,
