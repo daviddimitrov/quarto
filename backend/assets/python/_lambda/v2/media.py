@@ -260,9 +260,10 @@ def refresh_user(user_id):
 
 # ---------- Vorschläge ----------
 
-SUGGEST_SK = "MEDIA_SUGGEST#v2"   # neue Version, damit alte Vorschläge nicht eine Woche stehen bleiben
+SUGGEST_SK = "MEDIA_SUGGEST#v3"   # neue Version, damit alte Vorschläge nicht eine Woche stehen bleiben
 MAX_SOURCES = 15       # so viele eigene Titel fließen höchstens ein, die neuesten zuerst
 SUGGESTIONS = 10
+MAX_CHECKS = 96        # so viele Kandidaten werden höchstens im Detail bei TMDB geprüft
 
 
 def dismissed(items):
@@ -274,7 +275,7 @@ def candidate_from(r, kind=None):
     date = r.get("release_date") if kind == "movie" else r.get("first_air_date")
     return {"tmdbId": r["id"], "type": kind, "title": r.get("title") or r.get("name"),
             "year": (date or "")[:4] or None, "poster": poster(r.get("poster_path")),
-            "genreIds": r.get("genre_ids") or []}
+            "genreIds": r.get("genre_ids") or [], "date": date}
 
 
 def window():
@@ -315,10 +316,18 @@ def compute_suggestions(user_id):
 
     sources = sorted(own, key=lambda i: i.get("added", ""), reverse=True)[:MAX_SOURCES]
     scores, reasons, cands = {}, {}, {}
+    fresh = set()   # aus Discover, startet sicher im Zeitraum in Deutschland
+    oldest = (date.fromisoformat(start) - timedelta(days=365)).isoformat()
 
-    def add(c, points, reason=None):
+    def add(c, points, reason=None, is_fresh=False):
         key = f"{c['type']}-{c['tmdbId']}"
         if key in have or key in no or not c.get("title"):
+            return
+        if is_fresh:
+            fresh.add(key)
+        # Filme, die weltweit vor über einem Jahr oder erst nach dem Zeitraum starten, kommen nicht infrage
+        d = c.get("date")
+        if c["type"] == "movie" and key not in fresh and d and not (oldest <= d <= end):
             return
         cands.setdefault(key, c)
         scores[key] = scores.get(key, 0) + points
@@ -366,7 +375,7 @@ def compute_suggestions(user_id):
         jobs = [(kind, params, page) for kind, params in discover for page in (1, 2)]
         for kind, results in pool.map(lambda j: (j[0], safe(f"/discover/{j[0]}", page=j[2], **j[1])), jobs):
             for rank, r in enumerate(results):
-                add(candidate_from(r, kind), 0.5 * (1 - rank / 40))
+                add(candidate_from(r, kind), 0.5 * (1 - rank / 40), is_fresh=True)
         for r in safe("/trending/all/week")[:20]:
             if r.get("media_type") in ("movie", "tv"):
                 add(candidate_from(r), 0.4, "Trend")
@@ -376,7 +385,9 @@ def compute_suggestions(user_id):
             scores[key] += min(0.6, 0.2 * sum(1 for n in names if n and n in liked))
             scores[key] -= 0.3 * sum(no_genres.get(int(g), 0) for g in c["genreIds"])
 
-        ranked = sorted(cands, key=lambda k: -scores[k])[:SUGGESTIONS * 5]
+        # Sichere Kandidaten zuerst, innerhalb davon nach Punkten. Geprüft wird in Runden,
+        # bis genug Vorschläge da sind, damit viele alte Empfehlungen die neuen nicht verdrängen.
+        ranked = sorted(cands, key=lambda k: (k not in fresh, -scores[k]))[:MAX_CHECKS]
 
         def details(key):
             c = cands[key]
@@ -387,7 +398,16 @@ def compute_suggestions(user_id):
                 return key, None
 
         result = []
-        for key, info in pool.map(details, ranked):
+        checked = []
+        for b in range(0, len(ranked), 16):
+            checked += list(pool.map(details, ranked[b:b + 16]))
+            usable = sum(1 for _, info in checked if info and info.get("releaseDate")
+                         and start <= info["releaseDate"] <= end)
+            if usable >= SUGGESTIONS:
+                break
+        # Ausgabe nach Punkten, nicht nach Prüfreihenfolge
+        checked.sort(key=lambda ki: -scores[ki[0]])
+        for key, info in checked:
             if not info or not info.get("releaseDate") or not (start <= info["releaseDate"] <= end):
                 continue
             c = cands[key]
