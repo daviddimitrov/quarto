@@ -3,7 +3,9 @@
 Verschlüsselung nach RFC 8291 (aes128gcm), Anmeldung beim Push-Dienst nach RFC 8292 (VAPID).
 Die VAPID-Schlüssel liegen als SecureString in SSM, erzeugt mit `npx web-push generate-vapid-keys --json`.
 """
+
 import base64
+import functools
 import hashlib
 import json
 import os
@@ -16,14 +18,17 @@ from zoneinfo import ZoneInfo
 
 import boto3
 from boto3.dynamodb.conditions import Attr
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from collect_today import query_all, table
 
 VAPID_PARAM = os.environ.get("VAPID_PARAM", "/quarto/vapid")
 VAPID_SUB = os.environ.get("VAPID_SUB", "mailto:d.taureck@gmail.com")
 APP_URL = os.environ.get("APP_URL", "https://daviddimitrov.github.io/quarto/")
-
-_vapid = None
 
 
 def b64u(data):
@@ -34,34 +39,28 @@ def unb64u(text):
     return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
 
 
+@functools.cache
 def vapid_keys():
     """{"publicKey": ..., "privateKey": ...} aus SSM, pro Lambda-Instanz gecacht."""
-    global _vapid
-    if _vapid is None:
-        ssm = boto3.client("ssm")
-        _vapid = json.loads(ssm.get_parameter(Name=VAPID_PARAM, WithDecryption=True)["Parameter"]["Value"])
-    return _vapid
+    ssm = boto3.client("ssm")
+    return json.loads(ssm.get_parameter(Name=VAPID_PARAM, WithDecryption=True)["Parameter"]["Value"])
 
 
 # ---------- Krypto ----------
 
+
 def encrypt(p256dh, auth, payload):
     """Verschlüsselt payload für ein Abo (RFC 8291). Gibt den fertigen Request-Body zurück."""
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-
     ua_public = unb64u(p256dh)
     auth_secret = unb64u(auth)
     as_private = ec.generate_private_key(ec.SECP256R1())
     as_public = as_private.public_key().public_bytes(
-        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+    )
     ua_key = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), ua_public)
     shared = as_private.exchange(ec.ECDH(), ua_key)
 
-    ikm = HKDF(hashes.SHA256(), 32, salt=auth_secret,
-               info=b"WebPush: info\x00" + ua_public + as_public).derive(shared)
+    ikm = HKDF(hashes.SHA256(), 32, salt=auth_secret, info=b"WebPush: info\x00" + ua_public + as_public).derive(shared)
     salt = os.urandom(16)
     cek = HKDF(hashes.SHA256(), 16, salt=salt, info=b"Content-Encoding: aes128gcm\x00").derive(ikm)
     nonce = HKDF(hashes.SHA256(), 12, salt=salt, info=b"Content-Encoding: nonce\x00").derive(ikm)
@@ -73,15 +72,10 @@ def encrypt(p256dh, auth, payload):
 
 def vapid_header(endpoint):
     """Authorization-Header mit signiertem JWT für den Push-Dienst des Endpoints."""
-    from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-
     keys = vapid_keys()
     url = urllib.parse.urlparse(endpoint)
     claims = {"aud": f"{url.scheme}://{url.netloc}", "exp": int(time.time()) + 12 * 3600, "sub": VAPID_SUB}
-    signing_input = (b64u(json.dumps({"typ": "JWT", "alg": "ES256"}).encode()) + "."
-                     + b64u(json.dumps(claims).encode()))
+    signing_input = b64u(json.dumps({"typ": "JWT", "alg": "ES256"}).encode()) + "." + b64u(json.dumps(claims).encode())
     private = ec.derive_private_key(int.from_bytes(unb64u(keys["privateKey"]), "big"), ec.SECP256R1())
     r, s = decode_dss_signature(private.sign(signing_input.encode(), ec.ECDSA(hashes.SHA256())))
     jwt = signing_input + "." + b64u(r.to_bytes(32, "big") + s.to_bytes(32, "big"))
@@ -90,18 +84,24 @@ def vapid_header(endpoint):
 
 def send(subscription, message, urgency="normal"):
     """Schickt eine Nachricht an ein Abo. Gibt den HTTP-Status zurück."""
-    body = encrypt(subscription["keys"]["p256dh"], subscription["keys"]["auth"],
-                   json.dumps(message).encode())
-    request = urllib.request.Request(subscription["endpoint"], data=body, method="POST", headers={
-        "Authorization": vapid_header(subscription["endpoint"]),
-        "Content-Encoding": "aes128gcm",
-        "Content-Type": "application/octet-stream",
-        "TTL": "43200",
-        # "high" stellt sofort zu, "normal" darf Apple bündeln und verzögern, etwa im Stromsparmodus
-        "Urgency": urgency,
-    })
+    if not subscription["endpoint"].startswith("https://"):
+        raise ValueError("Push-Endpoint muss https sein")
+    body = encrypt(subscription["keys"]["p256dh"], subscription["keys"]["auth"], json.dumps(message).encode())
+    request = urllib.request.Request(  # noqa: S310 - Schema oben geprüft
+        subscription["endpoint"],
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": vapid_header(subscription["endpoint"]),
+            "Content-Encoding": "aes128gcm",
+            "Content-Type": "application/octet-stream",
+            "TTL": "43200",
+            # "high" stellt sofort zu, "normal" darf Apple bündeln und verzögern, etwa im Stromsparmodus
+            "Urgency": urgency,
+        },
+    )
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
+        with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310 - Schema oben geprüft
             return response.status
     except urllib.error.HTTPError as e:
         print(f"Push {e.code}: {e.read()[:200]!r}")
@@ -110,15 +110,20 @@ def send(subscription, message, urgency="normal"):
 
 # ---------- Abos ----------
 
+
 def sub_key(user_id, endpoint):
     return {"PK": f"USER#{user_id}", "SK": "PUSH#" + device_id(endpoint)}
 
 
 def save_subscription(user_id, subscription):
-    table.put_item(Item={**sub_key(user_id, subscription["endpoint"]),
-                         "endpoint": subscription["endpoint"],
-                         "keys": {"p256dh": subscription["keys"]["p256dh"], "auth": subscription["keys"]["auth"]},
-                         "created": datetime.now(ZoneInfo("Europe/Berlin")).isoformat()})
+    table.put_item(
+        Item={
+            **sub_key(user_id, subscription["endpoint"]),
+            "endpoint": subscription["endpoint"],
+            "keys": {"p256dh": subscription["keys"]["p256dh"], "auth": subscription["keys"]["auth"]},
+            "created": datetime.now(ZoneInfo("Europe/Berlin")).isoformat(),
+        }
+    )
 
 
 def delete_subscription(user_id, endpoint):
@@ -131,8 +136,11 @@ def device_id(endpoint):
 
 
 def open_today_count(items):
-    return sum(1 for i in items if i["SK"].startswith("TASK#") and i.get("today") == 1
-               and i.get("kontext", "privat") == "privat")
+    return sum(
+        1
+        for i in items
+        if i["SK"].startswith("TASK#") and i.get("today") == 1 and i.get("kontext", "privat") == "privat"
+    )
 
 
 def notify_status(user_id, exclude_device=None):
@@ -140,8 +148,9 @@ def notify_status(user_id, exclude_device=None):
     Das Gerät, von dem die Änderung kam, bekommt nichts, dort ist die App ja offen."""
     items = query_all(f"USER#{user_id}")
     message = open_message(items) or {"title": "Heute alles erledigt", "body": "", "url": APP_URL}
-    return send_to_user(user_id, {**message, "tag": "quarto-status"}, items, exclude_device=exclude_device,
-                        urgency="high")
+    return send_to_user(
+        user_id, {**message, "tag": "quarto-status"}, items, exclude_device=exclude_device, urgency="high"
+    )
 
 
 def send_to_user(user_id, message, items=None, exclude_device=None, urgency="high"):
@@ -163,12 +172,17 @@ def send_to_user(user_id, message, items=None, exclude_device=None, urgency="hig
 
 # ---------- Morgennachricht ----------
 
+
 def morning_message(items, today):
     """ASAP-Aufgaben auf heute und Deadlines bis heute. None, wenn nichts ansteht."""
     tasks = [i for i in items if i["SK"].startswith("TASK#")]
-    asap = [t["name"] for t in tasks
-            if int(t.get("priority") or 0) == 1 and not t.get("long_term")
-            and (t.get("today") == 1 or (t.get("due_date") and t["due_date"] <= today))]
+    asap = [
+        t["name"]
+        for t in tasks
+        if int(t.get("priority") or 0) == 1
+        and not t.get("long_term")
+        and (t.get("today") == 1 or (t.get("due_date") and t["due_date"] <= today))
+    ]
     due = [t for t in tasks if t.get("long_term") and t.get("deadline") and t["deadline"] <= today]
     lines = []
     if asap:
@@ -200,9 +214,14 @@ def notifications_of(profile):
 
 def open_message(items):
     """Offene private Aufgaben von heute. None, wenn alles erledigt ist."""
-    open_tasks = sorted([i for i in items if i["SK"].startswith("TASK#") and i.get("today") == 1
-                         and i.get("kontext", "privat") == "privat"],
-                        key=lambda t: (int(t.get("priority") or 99), t.get("ordnung", 0)))
+    open_tasks = sorted(
+        [
+            i
+            for i in items
+            if i["SK"].startswith("TASK#") and i.get("today") == 1 and i.get("kontext", "privat") == "privat"
+        ],
+        key=lambda t: (int(t.get("priority") or 99), t.get("ordnung", 0)),
+    )
     if not open_tasks:
         return None
     minutes = sum(int(t.get("duration") or 0) for t in open_tasks)
@@ -213,8 +232,11 @@ def open_message(items):
 
 def effort_message(items):
     """Nur die Minuten der offenen privaten Aufgaben von heute. None, wenn nichts offen ist."""
-    open_tasks = [i for i in items if i["SK"].startswith("TASK#") and i.get("today") == 1
-                  and i.get("kontext", "privat") == "privat"]
+    open_tasks = [
+        i
+        for i in items
+        if i["SK"].startswith("TASK#") and i.get("today") == 1 and i.get("kontext", "privat") == "privat"
+    ]
     if not open_tasks:
         return None
     minutes = sum(int(t.get("duration") or 0) for t in open_tasks)
@@ -239,12 +261,18 @@ def lambda_handler(event, context):
     results = {}
     for profile in profiles:
         user_id = profile["PK"].removeprefix("USER#")
-        due = [n for n in notifications_of(profile)
-               if n.get("time") == slot and now.weekday() in DAYS.get(n.get("days"), ())]
+        due = [
+            n
+            for n in notifications_of(profile)
+            if n.get("time") == slot and now.weekday() in DAYS.get(n.get("days"), ())
+        ]
         if not due:
             continue
-        if profile.get("vacation_from") and profile.get("vacation_to") \
-                and profile["vacation_from"] <= today <= profile["vacation_to"]:
+        if (
+            profile.get("vacation_from")
+            and profile.get("vacation_to")
+            and profile["vacation_from"] <= today <= profile["vacation_to"]
+        ):
             results[user_id] = "urlaub"
             continue
         items = query_all(profile["PK"])

@@ -17,9 +17,23 @@ from collect_today import NO_VALUE, collect_for_user, interval_days, query_all, 
 
 PRIORITIES = {1: "ASAP", 2: "HIGH", 3: "MEDIUM", 4: "LOW"}
 FIELDS = {
-    "name": "name", "duration": "duration", "dueDate": "due_date", "due_date": "due_date",
-    "rhythm": "rhythm", "today": "today", "priority_level_id": "priority", "priority": "priority",
-    "ordnung": "ordnung", "spontan": "spontan", "longTerm": "long_term", "long_term": "long_term", "kontext": "kontext", "deadline": "deadline", "notiz": "notiz", "subtasks": "subtasks", "evergreen": "evergreen",
+    "name": "name",
+    "duration": "duration",
+    "dueDate": "due_date",
+    "due_date": "due_date",
+    "rhythm": "rhythm",
+    "today": "today",
+    "priority_level_id": "priority",
+    "priority": "priority",
+    "ordnung": "ordnung",
+    "spontan": "spontan",
+    "longTerm": "long_term",
+    "long_term": "long_term",
+    "kontext": "kontext",
+    "deadline": "deadline",
+    "notiz": "notiz",
+    "subtasks": "subtasks",
+    "evergreen": "evergreen",
 }
 
 
@@ -113,9 +127,8 @@ def next_due(item, today_date):
 def normalize_subtasks(value):
     """Nimmt Textzeilen oder {id, name, done} an und liefert eine saubere Liste."""
     result = []
-    for s in value or []:
-        if isinstance(s, str):
-            s = {"name": s}
+    for raw in value or []:
+        s = {"name": raw} if isinstance(raw, str) else raw
         name = str(s.get("name") or "").strip()
         if name:
             result.append({"id": s.get("id") or uuid.uuid4().hex[:8], "name": name, "done": bool(s.get("done"))})
@@ -127,22 +140,24 @@ def parse(body):
     if isinstance(body.get("priorityLevel"), dict):
         body["priority"] = body["priorityLevel"].get("id")
     data = {}
-    for k, v in body.items():
+    for k, raw in body.items():
         if k not in FIELDS:
             continue
         field = FIELDS[k]
         if field == "subtasks":
-            data["subtasks"] = normalize_subtasks(v)
+            data["subtasks"] = normalize_subtasks(raw)
             continue
         if field == "rhythm":
-            data["rhythm"], data["regel"] = parse_rhythm(v)
+            data["rhythm"], data["regel"] = parse_rhythm(raw)
             continue
-        if v == "":
+        if raw == "":
             v = None
-        elif field in NUMERIC and isinstance(v, str):
-            v = int(v)
-        elif isinstance(v, float):
-            v = Decimal(str(v))
+        elif field in NUMERIC and isinstance(raw, str):
+            v = int(raw)
+        elif isinstance(raw, float):
+            v = Decimal(str(raw))
+        else:
+            v = raw
         data[field] = v
     return data
 
@@ -171,8 +186,10 @@ def to_dto(t, user_id, profile):
 
 def list_users(p, body):
     profiles = table.scan(FilterExpression=Attr("SK").eq("PROFILE"))["Items"]
-    users = [{"id": i["PK"].removeprefix("USER#"), "name": i["name"],
-              "default_duration": i.get("default_duration")} for i in profiles]
+    users = [
+        {"id": i["PK"].removeprefix("USER#"), "name": i["name"], "default_duration": i.get("default_duration")}
+        for i in profiles
+    ]
     name = p.get("user_name")
     if name is None:
         return 200, users
@@ -198,9 +215,13 @@ def list_tasks(p, body, mode="all"):
         tasks.sort(key=lambda t: t.get("ordnung", NO_VALUE))
     else:
         tasks = [t for t in tasks if not t.get("long_term")]
-        tasks.sort(key=lambda t: (t.get("due_date") or "9999-12-31",
-                                  int(t.get("priority") or NO_VALUE),
-                                  int(t.get("rhythm") or NO_VALUE)))
+        tasks.sort(
+            key=lambda t: (
+                t.get("due_date") or "9999-12-31",
+                int(t.get("priority") or NO_VALUE),
+                int(t.get("rhythm") or NO_VALUE),
+            )
+        )
     return 200, [to_dto(t, user_id, profile) for t in tasks]
 
 
@@ -218,14 +239,26 @@ def replacements(p, body):
     # minutes ist, was vom Tagesbudget noch frei ist, die App rechnet es aus
     limit = minutes or int(profile.get("default_duration", 15))
     now = today().isoformat()
-    tasks = [t for t in query_all(f"USER#{user_id}") if t["SK"].startswith("TASK#")
-             and t.get("kontext", "privat") == "privat" and t.get("today") != 1
-             and not t.get("spontan") and not t.get("long_term") and not t.get("evergreen")
-             and t.get("due_date") and str(t["id"]) != str(p.get("exclude"))
-             and int(t.get("duration") or 0) <= limit]
-    tasks.sort(key=lambda t: (t["due_date"] > now,
-                              int(t.get("priority") or NO_VALUE) if t["due_date"] <= now else 0,
-                              t["due_date"]))
+    tasks = [
+        t
+        for t in query_all(f"USER#{user_id}")
+        if t["SK"].startswith("TASK#")
+        and t.get("kontext", "privat") == "privat"
+        and t.get("today") != 1
+        and not t.get("spontan")
+        and not t.get("long_term")
+        and not t.get("evergreen")
+        and t.get("due_date")
+        and str(t["id"]) != str(p.get("exclude"))
+        and int(t.get("duration") or 0) <= limit
+    ]
+    tasks.sort(
+        key=lambda t: (
+            t["due_date"] > now,
+            int(t.get("priority") or NO_VALUE) if t["due_date"] <= now else 0,
+            t["due_date"],
+        )
+    )
     return 200, [to_dto(t, user_id, profile) for t in tasks[:5]]
 
 
@@ -264,8 +297,21 @@ def collect(p, body):
 
 # ---------- Siri-Kurzbefehl ----------
 
-MONTHS = {"januar": 1, "jänner": 1, "februar": 2, "märz": 3, "april": 4, "mai": 5, "juni": 6, "juli": 7,
-          "august": 8, "september": 9, "oktober": 10, "november": 11, "dezember": 12}
+MONTHS = {
+    "januar": 1,
+    "jänner": 1,
+    "februar": 2,
+    "märz": 3,
+    "april": 4,
+    "mai": 5,
+    "juni": 6,
+    "juli": 7,
+    "august": 8,
+    "september": 9,
+    "oktober": 10,
+    "november": 11,
+    "dezember": 12,
+}
 
 
 def parse_deadline(text, today_date):
@@ -372,8 +418,10 @@ def join_names(names):
 
 
 def open_today(tasks):
-    return sorted([t for t in tasks if t.get("today") == 1 and t.get("kontext", "privat") == "privat"],
-                  key=lambda t: (int(t.get("priority") or NO_VALUE), t.get("ordnung", NO_VALUE)))
+    return sorted(
+        [t for t in tasks if t.get("today") == 1 and t.get("kontext", "privat") == "privat"],
+        key=lambda t: (int(t.get("priority") or NO_VALUE), t.get("ordnung", NO_VALUE)),
+    )
 
 
 def say_open(tasks, prefix=""):
@@ -421,8 +469,9 @@ def quick_add(event):
     # Abhaken
     if re.search(DONE_PATTERN, plain):
         query = re.sub(r"\s+", " ", re.sub(DONE_WORDS, " ", plain)).strip()
-        candidates = open_today(tasks) + [t for t in tasks if t.get("long_term") and t.get("today") != 1
-                                          and t.get("kontext", "privat") == "privat"]
+        candidates = open_today(tasks) + [
+            t for t in tasks if t.get("long_term") and t.get("today") != 1 and t.get("kontext", "privat") == "privat"
+        ]
         match, other = best_match(query, candidates)
         if match is None:
             return 200, "Dazu finde ich nichts. " + say_open(tasks)
@@ -455,9 +504,16 @@ def quick_add(event):
     name, deadline = parse_deadline(text, today())
     name = name[:1].upper() + name[1:]
     task_id = uuid.uuid4().hex
-    item = {**key(user_id, task_id), "id": task_id, "name": name, "kontext": kontext,
-            "long_term": True, "spontan": False, "today": 0,
-            "ordnung": max((i.get("ordnung", 0) for i in tasks), default=0) + 1000}
+    item = {
+        **key(user_id, task_id),
+        "id": task_id,
+        "name": name,
+        "kontext": kontext,
+        "long_term": True,
+        "spontan": False,
+        "today": 0,
+        "ordnung": max((i.get("ordnung", 0) for i in tasks), default=0) + 1000,
+    }
     if deadline:
         item["deadline"] = deadline.isoformat()
     table.put_item(Item=item)
@@ -477,8 +533,7 @@ def create_task(p, body):
     existing = [i for i in query_all(f"USER#{user_id}") if i["SK"].startswith("TASK#")]
     max_order = max((i.get("ordnung", 0) for i in existing), default=0)
     task_id = uuid.uuid4().hex
-    item = {"today": 0, "spontan": False, "long_term": False, **data,
-            **key(user_id, task_id), "id": task_id}
+    item = {"today": 0, "spontan": False, "long_term": False, **data, **key(user_id, task_id), "id": task_id}
     item.setdefault("ordnung", max_order + 1000)
     if item["spontan"]:
         item["today"] = 1
@@ -560,8 +615,9 @@ def toggle_today(p, body):
     if item is None:
         return 404, {"message": "Task not found"}
     new = 0 if item.get("today") == 1 else 1
-    table.update_item(Key=key(p["userId"], p["taskId"]),
-                      UpdateExpression="SET today = :v", ExpressionAttributeValues={":v": new})
+    table.update_item(
+        Key=key(p["userId"], p["taskId"]), UpdateExpression="SET today = :v", ExpressionAttributeValues={":v": new}
+    )
     return 202, {"message": f"Task today set to {new} successfully"}
 
 
@@ -575,6 +631,7 @@ def shift(days):
             ExpressionAttributeValues={":d": (today() + timedelta(days=days)).isoformat(), ":z": 0},
         )
         return 202, {"message": f"Task moved by {days} days"}
+
     return handler
 
 
@@ -648,6 +705,7 @@ def user_from_token(event):
 
 # ---------- Push ----------
 
+
 def push_key(p, body):
     return 200, {"publicKey": push.vapid_keys()["publicKey"]}
 
@@ -679,8 +737,11 @@ def redistribute(p, body):
     if profile is None:
         return 404, {"message": "User not found"}
     now = today()
-    tasks = [i for i in query_all(f"USER#{user_id}") if i["SK"].startswith("TASK#")
-             and i.get("kontext", "privat") == "privat"]
+    tasks = [
+        i
+        for i in query_all(f"USER#{user_id}")
+        if i["SK"].startswith("TASK#") and i.get("kontext", "privat") == "privat"
+    ]
     recurring = [t for t in tasks if not t.get("long_term") and not t.get("spontan") and not t.get("evergreen")]
     demand = sum(int(t.get("duration") or 0) / interval_days(t) for t in recurring if interval_days(t))
     spare = max(5, int(profile.get("default_duration", 15)) - demand)
@@ -699,8 +760,11 @@ def redistribute(p, body):
         load[day] = load.get(day, 0) + minutes
         due = now + timedelta(days=day)
         last = max(last, due)
-        table.update_item(Key=key(user_id, t["id"]), UpdateExpression="SET due_date = :d",
-                          ExpressionAttributeValues={":d": due.isoformat()})
+        table.update_item(
+            Key=key(user_id, t["id"]),
+            UpdateExpression="SET due_date = :d",
+            ExpressionAttributeValues={":d": due.isoformat()},
+        )
     return 200, {"moved": len(overdue), "until": last.isoformat() if overdue else None}
 
 
@@ -732,12 +796,15 @@ def push_test(p, body):
     items = query_all(f"USER#{p['userId']}")
     today_iso = today().isoformat()
     message = push.morning_message(items, today_iso) or {
-        "title": "Testnachricht", "body": "Funktioniert. Heute steht nichts mit ASAP oder Deadline an.",
-        "url": push.APP_URL}
+        "title": "Testnachricht",
+        "body": "Funktioniert. Heute steht nichts mit ASAP oder Deadline an.",
+        "url": push.APP_URL,
+    }
     return 200, {"sent": push.send_to_user(p["userId"], message, items)}
 
 
 # ---------- Kino & TV ----------
+
 
 def media_search(p, body):
     q = (p.get("q") or "").strip()
@@ -771,8 +838,11 @@ def media_watched(p, body):
     if item is None:
         return 404, {"message": "Nicht gefunden"}
     watched = not item.get("watched")
-    table.update_item(Key={"PK": item["PK"], "SK": item["SK"]}, UpdateExpression="SET watched = :w",
-                      ExpressionAttributeValues={":w": watched})
+    table.update_item(
+        Key={"PK": item["PK"], "SK": item["SK"]},
+        UpdateExpression="SET watched = :w",
+        ExpressionAttributeValues={":w": watched},
+    )
     return 200, media.to_dto({**item, "watched": watched})
 
 
@@ -878,5 +948,8 @@ def lambda_handler(event, context):
         except Exception as e:
             print(f"Error: {e}")
             status, payload = 500, {"message": "An error occurred", "error": str(e)}
-    return {"statusCode": status, "headers": {"Content-Type": "application/json"},
-            "body": json.dumps(payload, default=to_json)}
+    return {
+        "statusCode": status,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps(payload, default=to_json),
+    }

@@ -717,6 +717,34 @@ Neue wiederkehrende Aufgaben legt man in Alle an, Rhythmus und Dauer ehrlich sch
 - Python 3 (lokaler Testserver, optional `backend/.venv` mit boto3 für Skripte)
 - Git mit Push-Rechten auf `daviddimitrov/quarto`
 
+### Qualität und Quality Gates
+
+Jeder PR und jeder Push auf main läuft durch `.github/workflows/ci.yml`. Der Branch-Schutz verlangt, dass alle Jobs grün sind, bevor gemergt werden kann.
+
+| Job | Prüft |
+|---|---|
+| Python | Ruff Lint und Format (`pyproject.toml`), pytest mit mindestens 85 % Zeilen- und Zweigabdeckung, pip-audit für Layer und Dev-Abhängigkeiten |
+| Frontend | ESLint (`frontend/eslint.config.js`), keine Warnungen erlaubt |
+| Infrastruktur | `tsc --noEmit`, CDK-Tests mit Jest (`backend/test`), `cdk synth` inklusive Layer-Build, `npm audit` ab high |
+| SonarQube Cloud | Analyse mit Abdeckung aus dem Python-Job, wartet auf das Quality Gate. Ohne `SONAR_TOKEN` übersprungen mit Warnung |
+| Abhängigkeiten | Dependency Review auf PRs, bricht bei neuen Abhängigkeiten mit Schwachstellen ab high ab |
+
+Dazu `codeql.yml` (Python, JavaScript/TypeScript, GitHub Actions, Abfragen `security-and-quality`, auch wöchentlich) und `.github/dependabot.yml` (wöchentlich gruppierte Updates für Actions, pip und npm). Alle Actions sind auf Commit-SHAs gepinnt, Dependabot hält sie aktuell. Fremde Skripte im Frontend haben Subresource-Integrity-Hashes.
+
+Lokal:
+
+```sh
+pip install -r backend/requirements-dev.txt
+ruff check . && ruff format --check .
+pytest --cov
+cd frontend && npm ci && npx eslint .
+cd backend && npx tsc --noEmit && npx jest
+```
+
+Die Python-Tests (`backend/tests`) laufen gegen DynamoDB aus moto, Push, Planta und TMDB sind gemockt, nichts geht ins Netz. `conftest.py` stellt `call(route, body, path, query)` bereit, das den Lambda-Handler wie das HTTP-API mit Cognito-Claims aufruft.
+
+**SonarQube Cloud einrichten (einmalig):** Auf sonarcloud.io mit GitHub anmelden, das Repo importieren, unter Administration → Analysis Method die automatische Analyse ausschalten, einen Token erzeugen und als Repository-Secret `SONAR_TOKEN` hinterlegen. Projektschlüssel und Organisation stehen in `sonar-project.properties`.
+
 ### Frontend lokal testen
 
 ```sh

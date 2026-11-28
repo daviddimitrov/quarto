@@ -4,41 +4,46 @@ Die Daten kommen von TMDB (themoviedb.org), die Streaming-Infos dort stammen von
 Den API-Lesezugriffs-Token setzt der Deploy-Workflow aus dem GitHub-Secret TMDB_TOKEN als
 Umgebungsvariable. Fehlt sie, wird der SecureString /quarto/tmdb aus SSM gelesen.
 """
+
+import functools
 import json
 import os
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import boto3
+from boto3.dynamodb.conditions import Attr
 
+import push
 from collect_today import query_all, table
 
 TMDB_PARAM = os.environ.get("TMDB_PARAM", "/quarto/tmdb")
 API = "https://api.themoviedb.org/3"
 IMAGES = "https://image.tmdb.org/t/p/w185"
 
-_token = None
 
-
+@functools.cache
 def token():
-    global _token
-    if _token is None and os.environ.get("TMDB_TOKEN"):
-        _token = os.environ["TMDB_TOKEN"].strip()
-    if _token is None:
-        ssm = boto3.client("ssm")
-        _token = ssm.get_parameter(Name=TMDB_PARAM, WithDecryption=True)["Parameter"]["Value"].strip()
-    return _token
+    """TMDB-Token aus der Umgebung, sonst aus SSM. Pro Lambda-Instanz gecacht."""
+    if os.environ.get("TMDB_TOKEN"):
+        return os.environ["TMDB_TOKEN"].strip()
+    ssm = boto3.client("ssm")
+    return ssm.get_parameter(Name=TMDB_PARAM, WithDecryption=True)["Parameter"]["Value"].strip()
 
 
 def tmdb(path, **params):
     query = urllib.parse.urlencode({"language": "de-DE", **params})
-    request = urllib.request.Request(f"{API}{path}?{query}", headers={
-        "Authorization": f"Bearer {token()}",
-        "Accept": "application/json",
-    })
-    with urllib.request.urlopen(request, timeout=8) as response:
+    request = urllib.request.Request(  # noqa: S310 - feste https-URL
+        f"{API}{path}?{query}",
+        headers={
+            "Authorization": f"Bearer {token()}",
+            "Accept": "application/json",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=8) as response:  # noqa: S310 - feste https-URL
         return json.loads(response.read())
 
 
@@ -65,9 +70,25 @@ def providers_de(data):
     return sorted(names, key=provider_rank)
 
 
-PROVIDER_ALIASES = {"Max": "HBO Max", "Netflix Standard": "Netflix", "Amazon Prime Video": "Prime Video", "Disney Plus": "Disney+", "Paramount Plus": "Paramount+"}
-PREFERRED = ["HBO Max", "Netflix", "Prime Video", "Disney+", "Apple TV+", "Apple TV", "Paramount+",
-             "ZDF", "ARD Mediathek", "Arte"]
+PROVIDER_ALIASES = {
+    "Max": "HBO Max",
+    "Netflix Standard": "Netflix",
+    "Amazon Prime Video": "Prime Video",
+    "Disney Plus": "Disney+",
+    "Paramount Plus": "Paramount+",
+}
+PREFERRED = [
+    "HBO Max",
+    "Netflix",
+    "Prime Video",
+    "Disney+",
+    "Apple TV+",
+    "Apple TV",
+    "Paramount+",
+    "ZDF",
+    "ARD Mediathek",
+    "Arte",
+]
 
 
 def provider_rank(name):
@@ -80,6 +101,7 @@ def provider_rank(name):
 
 # ---------- Suche ----------
 
+
 def search(query):
     data = tmdb("/search/multi", query=query, include_adult="false", region="DE")
     results = []
@@ -87,13 +109,15 @@ def search(query):
         if r.get("media_type") not in ("movie", "tv"):
             continue
         date = r.get("release_date") if r["media_type"] == "movie" else r.get("first_air_date")
-        results.append({
-            "tmdbId": r["id"],
-            "type": r["media_type"],
-            "title": r.get("title") or r.get("name"),
-            "year": (date or "")[:4] or None,
-            "poster": poster(r.get("poster_path")),
-        })
+        results.append(
+            {
+                "tmdbId": r["id"],
+                "type": r["media_type"],
+                "title": r.get("title") or r.get("name"),
+                "year": (date or "")[:4] or None,
+                "poster": poster(r.get("poster_path")),
+            }
+        )
     return results[:10]
 
 
@@ -102,9 +126,16 @@ def tv_seasons(tmdb_id):
     sie noch nicht kennt. So lassen sich angekündigte Staffeln vormerken, die wöchentliche Prüfung
     trägt das Datum nach, sobald es bekannt ist."""
     data = tmdb(f"/tv/{tmdb_id}")
-    seasons = [{"season": s["season_number"], "name": s.get("name"), "airDate": s.get("air_date"),
-                "episodes": s.get("episode_count")}
-               for s in data.get("seasons", []) if s.get("season_number", 0) > 0]
+    seasons = [
+        {
+            "season": s["season_number"],
+            "name": s.get("name"),
+            "airDate": s.get("air_date"),
+            "episodes": s.get("episode_count"),
+        }
+        for s in data.get("seasons", [])
+        if s.get("season_number", 0) > 0
+    ]
     if data.get("status") not in ("Ended", "Canceled"):
         nxt = (seasons[-1]["season"] if seasons else 0) + 1
         seasons.append({"season": nxt, "name": f"Staffel {nxt}", "airDate": None, "episodes": None, "announced": True})
@@ -113,6 +144,7 @@ def tv_seasons(tmdb_id):
 
 # ---------- Release-Infos ----------
 
+
 def movie_info(tmdb_id):
     """Kinostart und Streamingstart in Deutschland, dazu wo der Film gerade läuft."""
     data = tmdb(f"/movie/{tmdb_id}", append_to_response="release_dates,watch/providers")
@@ -120,8 +152,9 @@ def movie_info(tmdb_id):
     dates = (de or {}).get("release_dates") or []
     # TMDB-Typen: 2 begrenzt im Kino, 3 Kino, 4 digital, 5 DVD/Blu-ray, 6 TV
     # Regulärer Kinostart zählt, begrenzte Starts (Previews, Festivals) nur, wenn es keinen regulären gibt
-    cinema = min((d["release_date"][:10] for d in dates if d.get("type") == 3), default=None) \
-        or min((d["release_date"][:10] for d in dates if d.get("type") == 2), default=None)
+    cinema = min((d["release_date"][:10] for d in dates if d.get("type") == 3), default=None) or min(
+        (d["release_date"][:10] for d in dates if d.get("type") == 2), default=None
+    )
     digital = min((d["release_date"][:10] for d in dates if d.get("type") == 4), default=None)
     providers = providers_de(data)
     info = {
@@ -155,8 +188,10 @@ def tv_info(tmdb_id, season=None):
     chosen = None
     if season is not None:
         # Angekündigte Staffel, die TMDB noch nicht kennt: vormerken ohne Datum
-        chosen = next((s for s in seasons if s["season_number"] == int(season)), None) \
-            or {"season_number": int(season), "name": f"Staffel {int(season)}"}
+        chosen = next((s for s in seasons if s["season_number"] == int(season)), None) or {
+            "season_number": int(season),
+            "name": f"Staffel {int(season)}",
+        }
     if chosen is None:
         upcoming = [s for s in seasons if not s.get("air_date") or s["air_date"] > now]
         chosen = upcoming[0] if upcoming else (seasons[-1] if seasons else None)
@@ -186,6 +221,7 @@ def fetch_info(kind, tmdb_id, season=None):
 
 
 # ---------- Speichern ----------
+
 
 def media_key(user_id, kind, tmdb_id, season=None):
     suffix = f"-s{season}" if kind == "tv" and season is not None else ""
@@ -249,21 +285,29 @@ def refresh_user(user_id):
             print(f"TMDB {item['SK']}: {e}")
             continue
         before = (item.get("release_date"), tuple(item.get("providers") or []))
-        stored = store(user_id, item["kind"], item["tmdb_id"], {**info, "season": item.get("season")},
-                       added=item.get("added"))
+        stored = store(
+            user_id, item["kind"], item["tmdb_id"], {**info, "season": item.get("season")}, added=item.get("added")
+        )
         after = (stored.get("release_date"), tuple(stored.get("providers") or []))
         if before != after:
-            changes.append({"title": stored["title"], "season": stored.get("season"),
-                            "before": before[0], "after": after[0], "providers": list(after[1])})
+            changes.append(
+                {
+                    "title": stored["title"],
+                    "season": stored.get("season"),
+                    "before": before[0],
+                    "after": after[0],
+                    "providers": list(after[1]),
+                }
+            )
     return changes
 
 
 # ---------- Vorschläge ----------
 
-SUGGEST_SK = "MEDIA_SUGGEST#v3"   # neue Version, damit alte Vorschläge nicht eine Woche stehen bleiben
-MAX_SOURCES = 15       # so viele eigene Titel fließen höchstens ein, die neuesten zuerst
+SUGGEST_SK = "MEDIA_SUGGEST#v3"  # neue Version, damit alte Vorschläge nicht eine Woche stehen bleiben
+MAX_SOURCES = 15  # so viele eigene Titel fließen höchstens ein, die neuesten zuerst
 SUGGESTIONS = 10
-MAX_CHECKS = 96        # so viele Kandidaten werden höchstens im Detail bei TMDB geprüft
+MAX_CHECKS = 96  # so viele Kandidaten werden höchstens im Detail bei TMDB geprüft
 
 
 def dismissed(items):
@@ -273,9 +317,15 @@ def dismissed(items):
 def candidate_from(r, kind=None):
     kind = kind or r.get("media_type")
     date = r.get("release_date") if kind == "movie" else r.get("first_air_date")
-    return {"tmdbId": r["id"], "type": kind, "title": r.get("title") or r.get("name"),
-            "year": (date or "")[:4] or None, "poster": poster(r.get("poster_path")),
-            "genreIds": r.get("genre_ids") or [], "date": date}
+    return {
+        "tmdbId": r["id"],
+        "type": kind,
+        "title": r.get("title") or r.get("name"),
+        "year": (date or "")[:4] or None,
+        "poster": poster(r.get("poster_path")),
+        "genreIds": r.get("genre_ids") or [],
+        "date": date,
+    }
 
 
 def window():
@@ -286,8 +336,20 @@ def window():
     return start.isoformat(), (after_next - timedelta(days=1)).isoformat()
 
 
-MONTHS_DE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September",
-             "Oktober", "November", "Dezember"]
+MONTHS_DE = [
+    "Januar",
+    "Februar",
+    "März",
+    "April",
+    "Mai",
+    "Juni",
+    "Juli",
+    "August",
+    "September",
+    "Oktober",
+    "November",
+    "Dezember",
+]
 
 
 def compute_suggestions(user_id):
@@ -301,8 +363,6 @@ def compute_suggestions(user_id):
     Liste vorkommt, 0,2 (höchstens 0,6), Trend 0,4, Beliebtheit bis 0,5. Abzug je Genre, das in
     weggeklickten Vorschlägen vorkam.
     """
-    from concurrent.futures import ThreadPoolExecutor
-
     start, end = window()
     items = query_all(f"USER#{user_id}")
     own = [i for i in items if i["SK"].startswith("MEDIA#")]
@@ -316,7 +376,7 @@ def compute_suggestions(user_id):
 
     sources = sorted(own, key=lambda i: i.get("added", ""), reverse=True)[:MAX_SOURCES]
     scores, reasons, cands = {}, {}, {}
-    fresh = set()   # aus Discover, startet sicher im Zeitraum in Deutschland
+    fresh = set()  # aus Discover, startet sicher im Zeitraum in Deutschland
     oldest = (date.fromisoformat(start) - timedelta(days=365)).isoformat()
 
     def add(c, points, reason=None, is_fresh=False):
@@ -364,13 +424,38 @@ def compute_suggestions(user_id):
                 add(candidate_from(r, i["kind"]), 2 if i.get("watched") else 1, i["title"])
 
         discover = [
-            ("movie", {"region": "DE", "with_release_type": "2|3",
-                       "release_date.gte": start, "release_date.lte": end, "sort_by": "popularity.desc"}),
-            ("movie", {"watch_region": "DE", "with_watch_monetization_types": "flatrate|free|ads",
-                       "with_release_type": "4", "region": "DE",
-                       "release_date.gte": start, "release_date.lte": end, "sort_by": "popularity.desc"}),
-            ("tv", {"watch_region": "DE", "with_watch_monetization_types": "flatrate|free|ads",
-                    "air_date.gte": start, "air_date.lte": end, "sort_by": "popularity.desc"}),
+            (
+                "movie",
+                {
+                    "region": "DE",
+                    "with_release_type": "2|3",
+                    "release_date.gte": start,
+                    "release_date.lte": end,
+                    "sort_by": "popularity.desc",
+                },
+            ),
+            (
+                "movie",
+                {
+                    "watch_region": "DE",
+                    "with_watch_monetization_types": "flatrate|free|ads",
+                    "with_release_type": "4",
+                    "region": "DE",
+                    "release_date.gte": start,
+                    "release_date.lte": end,
+                    "sort_by": "popularity.desc",
+                },
+            ),
+            (
+                "tv",
+                {
+                    "watch_region": "DE",
+                    "with_watch_monetization_types": "flatrate|free|ads",
+                    "air_date.gte": start,
+                    "air_date.lte": end,
+                    "sort_by": "popularity.desc",
+                },
+            ),
         ]
         jobs = [(kind, params, page) for kind, params in discover for page in (1, 2)]
         for kind, results in pool.map(lambda j: (j[0], safe(f"/discover/{j[0]}", page=j[2], **j[1])), jobs):
@@ -400,9 +485,10 @@ def compute_suggestions(user_id):
         result = []
         checked = []
         for b in range(0, len(ranked), 16):
-            checked += list(pool.map(details, ranked[b:b + 16]))
-            usable = sum(1 for _, info in checked if info and info.get("releaseDate")
-                         and start <= info["releaseDate"] <= end)
+            checked += list(pool.map(details, ranked[b : b + 16]))
+            usable = sum(
+                1 for _, info in checked if info and info.get("releaseDate") and start <= info["releaseDate"] <= end
+            )
             if usable >= SUGGESTIONS:
                 break
         # Ausgabe nach Punkten, nicht nach Prüfreihenfolge
@@ -412,7 +498,7 @@ def compute_suggestions(user_id):
                 continue
             c = cands[key]
             if c["type"] == "tv" and not info.get("deProviders"):
-                continue   # Serie ohne deutschen Dienst, etwa nur beim US-Sender
+                continue  # Serie ohne deutschen Dienst, etwa nur beim US-Sender
             if c["type"] == "movie" and not info.get("providers") and info.get("where") != "kino":
                 continue
             own_reasons = [r for r in reasons[key] if r != "Trend"]
@@ -423,15 +509,22 @@ def compute_suggestions(user_id):
                 why = f"Diese Woche im Trend, neu im {month}"
             else:
                 why = f"Neu im {month}"
-            result.append({**c, "poster": info.get("poster") or c["poster"], "providers": info.get("providers") or [],
-                           "releaseDate": info.get("releaseDate"), "where": info.get("where"),
-                           "estimated": bool(info.get("estimated")), "season": info.get("season"),
-                           "reason": why})
+            result.append(
+                {
+                    **c,
+                    "poster": info.get("poster") or c["poster"],
+                    "providers": info.get("providers") or [],
+                    "releaseDate": info.get("releaseDate"),
+                    "where": info.get("where"),
+                    "estimated": bool(info.get("estimated")),
+                    "season": info.get("season"),
+                    "reason": why,
+                }
+            )
             if len(result) >= SUGGESTIONS:
                 break
 
-    table.put_item(Item={"PK": f"USER#{user_id}", "SK": SUGGEST_SK, "computed": today(),
-                         "items": json.dumps(result)})
+    table.put_item(Item={"PK": f"USER#{user_id}", "SK": SUGGEST_SK, "computed": today(), "items": json.dumps(result)})
     return result
 
 
@@ -445,19 +538,30 @@ def suggestions(user_id, force=False):
             have = {i["SK"].removeprefix("MEDIA#") for i in items if i["SK"].startswith("MEDIA#")}
             no = dismissed(items)
             # Inzwischen Hinzugefügtes oder Weggeklicktes fällt raus
-            return [s for s in json.loads(cached["items"])
-                    if f"{s['type']}-{s['tmdbId']}" not in no
-                    and not any(h == f"{s['type']}-{s['tmdbId']}" or h.startswith(f"{s['type']}-{s['tmdbId']}-")
-                                for h in have)]
+            return [
+                s
+                for s in json.loads(cached["items"])
+                if f"{s['type']}-{s['tmdbId']}" not in no
+                and not any(
+                    h == f"{s['type']}-{s['tmdbId']}" or h.startswith(f"{s['type']}-{s['tmdbId']}-") for h in have
+                )
+            ]
     return compute_suggestions(user_id)
 
 
 def dismiss(user_id, kind, tmdb_id, genre_ids):
-    table.put_item(Item={"PK": f"USER#{user_id}", "SK": f"MEDIA_NO#{kind}-{int(tmdb_id)}",
-                         "genre_ids": [int(g) for g in genre_ids or []], "added": today()})
+    table.put_item(
+        Item={
+            "PK": f"USER#{user_id}",
+            "SK": f"MEDIA_NO#{kind}-{int(tmdb_id)}",
+            "genre_ids": [int(g) for g in genre_ids or []],
+            "added": today(),
+        }
+    )
 
 
 # ---------- Tägliche und wöchentliche Prüfung ----------
+
 
 def label(item):
     season = item.get("season")
@@ -472,7 +576,7 @@ def where_short(item):
 
 
 def short_date(iso):
-    y, m, d = (int(x) for x in iso.split("-"))
+    _, m, d = (int(x) for x in iso.split("-"))
     return f"{d}.{m}."
 
 
@@ -483,9 +587,6 @@ def scheduled_handler(event, context):
     Freitags zusätzlich: alle ungeschauten Einträge neu bei TMDB abfragen, über geänderte Termine
     oder neue Dienste informieren und die Vorschläge neu berechnen.
     """
-    import push
-    from boto3.dynamodb.conditions import Attr
-
     weekly = bool((event or {}).get("weekly")) or datetime.now(ZoneInfo("Europe/Berlin")).weekday() == 4
     now = today()
     results = {}
@@ -510,8 +611,12 @@ def scheduled_handler(event, context):
                 if line not in lines:
                     lines.insert(0, line)
         if lines:
-            message = {"title": lines[0], "body": "\n".join(lines[1:]), "url": push.APP_URL + "#kino",
-                       "tag": "quarto-kino"}
+            message = {
+                "title": lines[0],
+                "body": "\n".join(lines[1:]),
+                "url": push.APP_URL + "#kino",
+                "tag": "quarto-kino",
+            }
             results[user_id] = push.send_to_user(user_id, message, items)
         else:
             results[user_id] = "nichts"

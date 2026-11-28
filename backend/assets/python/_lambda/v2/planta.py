@@ -4,6 +4,7 @@
 getplanta.com/apps/manage, danach hält ein Refresh-Token den Zugang offen. Besprühen, Reinigen,
 Umtopfen und Rückschnitt werden bewusst ignoriert.
 """
+
 import base64
 import json
 import time
@@ -37,9 +38,9 @@ def request(method, path, body=None, token=None):
     if token:
         headers["Authorization"] = token
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(f"{API}{path}", data=data, method=method, headers=headers)
+    req = urllib.request.Request(f"{API}{path}", data=data, method=method, headers=headers)  # noqa: S310 - feste https-URL
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310 - feste https-URL
             raw = resp.read()
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
@@ -47,10 +48,11 @@ def request(method, path, body=None, token=None):
             message = json.loads(e.read()).get("message", "")
         except Exception:
             message = ""
-        raise PlantaError(e.code, message or e.reason)
+        raise PlantaError(e.code, message or e.reason) from e
 
 
 # ---------- Zugang ----------
+
 
 def auth_key(user_id):
     return {"PK": f"USER#{user_id}", "SK": AUTH_SK}
@@ -95,6 +97,7 @@ def authorization(user_id):
 
 # ---------- Abgleich ----------
 
+
 def plants(auth):
     result, cursor = [], None
     while True:
@@ -135,19 +138,33 @@ def sync_user(user_id):
         if t is None:
             max_order += 1000
             task_id = uuid.uuid4().hex
-            table.put_item(Item={
-                "PK": f"USER#{user_id}", "SK": f"TASK#{task_id}", "id": task_id,
-                "name": label, "kontext": "privat", "priority": 1, "duration": 0, "today": 1,
-                "spontan": False, "long_term": False, "ordnung": max_order,
-                "planta_key": k, "planta_plant": pid, "planta_action": action,
-            })
+            table.put_item(
+                Item={
+                    "PK": f"USER#{user_id}",
+                    "SK": f"TASK#{task_id}",
+                    "id": task_id,
+                    "name": label,
+                    "kontext": "privat",
+                    "priority": 1,
+                    "duration": 0,
+                    "today": 1,
+                    "spontan": False,
+                    "long_term": False,
+                    "ordnung": max_order,
+                    "planta_key": k,
+                    "planta_plant": pid,
+                    "planta_action": action,
+                }
+            )
             created += 1
         elif int(t.get("today", 0)) != 1 or t.get("due_date") or t.get("name") != label:
             # Immer auf heute, auch wenn sie gestern verschoben wurde
-            table.update_item(Key={"PK": t["PK"], "SK": t["SK"]},
-                              UpdateExpression="SET today = :o, #n = :n REMOVE due_date",
-                              ExpressionAttributeNames={"#n": "name"},
-                              ExpressionAttributeValues={":o": 1, ":n": label})
+            table.update_item(
+                Key={"PK": t["PK"], "SK": t["SK"]},
+                UpdateExpression="SET today = :o, #n = :n REMOVE due_date",
+                ExpressionAttributeNames={"#n": "name"},
+                ExpressionAttributeValues={":o": 1, ":n": label},
+            )
             refreshed += 1
     for k, t in existing.items():
         if k not in wanted:
@@ -161,8 +178,12 @@ def complete(user_id, item):
     auth = authorization(user_id)
     if auth is None:
         return False
-    request("POST", f"/addedPlants/{item['planta_plant']}/actions/complete",
-            {"actionType": item["planta_action"]}, token=auth)
+    request(
+        "POST",
+        f"/addedPlants/{item['planta_plant']}/actions/complete",
+        {"actionType": item["planta_action"]},
+        token=auth,
+    )
     return True
 
 
