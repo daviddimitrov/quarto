@@ -204,7 +204,7 @@ def list_tasks(p, body, mode="all"):
 
 
 def replacements(p, body):
-    """Bis zu drei private Aufgaben, die in frei gewordene Minuten passen, wenn heute etwas wegfällt.
+    """Bis zu fünf private Aufgaben, die in frei gewordene Minuten passen, wenn heute etwas wegfällt.
     Erst Fälliges nach Priorität und Datum, dann was demnächst ansteht, frühestes zuerst."""
     user_id = p["userId"]
     profile = get_profile(user_id)
@@ -225,7 +225,7 @@ def replacements(p, body):
     tasks.sort(key=lambda t: (t["due_date"] > now,
                               int(t.get("priority") or NO_VALUE) if t["due_date"] <= now else 0,
                               t["due_date"]))
-    return 200, [to_dto(t, user_id, profile) for t in tasks[:3]]
+    return 200, [to_dto(t, user_id, profile) for t in tasks[:5]]
 
 
 def collect(p, body):

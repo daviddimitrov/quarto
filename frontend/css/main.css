@@ -757,6 +757,10 @@ kbd {
 
 #undo-alts button:hover { background: var(--hover); }
 #undo-alts button .mono { color: var(--muted); margin-left: 4px; }
+#undo-alts button.taken { color: var(--accent); border-color: var(--accent); }
+#undo-alts button.nofit { opacity: .35; }
+#undo-alts button.shake { animation: shake .3s; }
+@keyframes shake { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
 
 @keyframes toast-bar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
