@@ -247,7 +247,7 @@ Single-Table-Design: Alle Daten eines Nutzers liegen unter einem Partition Key, 
 | `watched` | Bool | geschaut |
 | `added`, `checked` | String | hinzugefügt am, zuletzt bei TMDB abgefragt |
 
-Dazu `SK = MEDIA_NO#<movie|tv>-<tmdb-id>` für weggeklickte Vorschläge mit ihren `genre_ids` und `SK = MEDIA_SUGGEST#v2` mit den zuletzt berechneten Vorschlägen als JSON und dem Datum `computed`.
+Dazu `SK = MEDIA_NO#<movie|tv>-<tmdb-id>` für weggeklickte Vorschläge mit ihren `genre_ids` und `SK = MEDIA_SUGGEST#v3` mit den zuletzt berechneten Vorschlägen als JSON und dem Datum `computed`.
 
 ### Push-Abo
 
@@ -484,7 +484,7 @@ Eigene Seite für Filme und Serien, die man sehen will. Sie ist bewusst getrennt
   - Behalten wird, was im Zeitraum in Deutschland ins Kino kommt oder bei einem Dienst startet. Bei Serien muss eine Staffel im Zeitraum beginnen und die Serie bei einem deutschen Dienst laufen. Alte Serien wie Game of Thrones fallen damit raus, ebenso Serien, die nur bei einem US-Sender laufen.
   - Punkte: Empfehlung zu einem eigenen Titel 1, zu einem geschauten 2, je Genre, das auf der eigenen Liste vorkommt, 0,2 (höchstens 0,6), Trend 0,4, Beliebtheit im Zeitraum bis 0,5. Je Genre aus weggeklickten Vorschlägen 0,3 Abzug. Was schon auf der Liste steht oder weggeklickt wurde, fällt raus.
   - Jede Karte nennt den Grund („Weil du House of the Dragon auf der Liste hast“, „Neu im Dezember“). „Hinzufügen“ übernimmt den Titel, bei Serien mit Staffelauswahl. „Nicht interessiert“ blendet ihn für immer aus.
-  - Berechnet wird höchstens einmal pro Woche und freitags automatisch, das Ergebnis liegt unter `MEDIA_SUGGEST#v2`. Der Pfeil neben der Überschrift rechnet sofort neu. Die TMDB-Abfragen laufen parallel, `ApiFn` hat dafür 25 Sekunden Zeit.
+  - Berechnet wird höchstens einmal pro Woche und freitags automatisch, das Ergebnis liegt unter `MEDIA_SUGGEST#v3`. Der Pfeil neben der Überschrift rechnet sofort neu. Geprüft werden zuerst die deutschen Starts aus Discover, dann die übrigen Kandidaten nach Punkten, in Runden zu 16 und höchstens 96, bis zehn Vorschläge zusammen sind. Empfohlene Filme, die weltweit vor über einem Jahr gestartet sind, fallen schon vorher raus. Ohne diese Reihenfolge verdrängen die vielen älteren Empfehlungen zu eigenen Titeln die neuen Starts, und die Liste bleibt leer. Die TMDB-Abfragen laufen parallel, `ApiFn` hat dafür 25 Sekunden Zeit.
 - **Automatische Prüfung** (`scheduled_handler`, täglich 9 Uhr):
   - Jeden Tag kommt eine Mitteilung für alles Ungeschaute, das heute erscheint, etwa „Heute neu: Severance Staffel 3 bei Apple TV“.
   - Freitags werden zusätzlich alle ungeschauten Einträge neu bei TMDB abgefragt. Hat sich ein Termin verschoben, ist ein angekündigter Termin dazugekommen oder läuft etwas jetzt bei einem Dienst, steht das mit in der Mitteilung („Neuer Termin: House of the Dragon Staffel 4 ab 14.6.“, „Jetzt verfügbar: … bei Netflix“). Danach werden die Vorschläge neu berechnet.
