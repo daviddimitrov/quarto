@@ -595,6 +595,10 @@ Jede Aufgabe ist eine Zeile mit Kästchen, Name, Infos rechts und „⋯“-Men�
   - Alle: Bearbeiten, Morgen, Nächste Woche, Löschen
   - Evergreens: Heute, Umbenennen, Löschen
 
+### Auf heute aus Alle
+
+Im Menü einer Aufgabe in Alle steht „Auf heute“, bei Aufgaben, die schon auf heute stehen, „Nicht heute“. Das schaltet nur `today` um, die Fälligkeit bleibt. Wie die anderen Aktionen mit 5 Sekunden Rückgängig.
+
 ### Rückgängig
 
 Erledigt, Nicht heute, Morgen, Nächste Woche und Auf heute wirken sofort in der Oberfläche, gehen aber erst nach 5 Sekunden an den Server. So lange zeigt ein Hinweis unten die Aktion mit „Rückgängig“ und einem ablaufenden Balken, auf dem Mac geht auch `⌘Z`. Rückgängig stellt den gespeicherten Stand von Listen und Profil wieder her, ohne dass der Server je etwas davon mitbekommt.
@@ -606,7 +610,7 @@ Erledigt, Nicht heute, Morgen, Nächste Woche und Auf heute wirken sofort in der
 
 ### Ersatz statt verschobener Aufgabe
 
-Wird in Heute eine einzelne Aufgabe auf Nicht heute, Morgen oder Nächste Woche gesetzt, zeigt der Hinweis darunter bis zu drei Aufgaben unter „Stattdessen:“, und der Balken läuft dann 10 statt 5 Sekunden. Ein Tipp schickt die Verschiebung ab und holt die gewählte Aufgabe auf heute. Gedacht für Tage, an denen etwas gerade nicht geht, etwa eine Aufgabe draußen.
+Wird in Heute eine einzelne Aufgabe auf Nicht heute, Morgen oder Nächste Woche gesetzt, zeigt der Hinweis darunter bis zu fünf Aufgaben unter „Stattdessen:“, und der Balken läuft dann 10 statt 5 Sekunden. Ein Tipp schickt die Verschiebung ab und holt die gewählte Aufgabe auf heute. Danach bleibt der Hinweis stehen und zeigt „Noch X min frei“, weitere Aufgaben lassen sich dazunehmen, solange sie mit 5 Minuten Spielraum in die übrige Zeit passen. Was nicht mehr passt, wird blass, ein Tipp darauf wackelt und sagt „Passt nicht mehr“. Bei einer verschobenen Aufgabe ohne Dauer gilt das Tageslimit als frei. Gedacht für Tage, an denen etwas gerade nicht geht, etwa eine Aufgabe draußen.
 
 `GET /user/{userId}/tasks/replacements?minutes=<frei>&exclude=<id>` sucht unter den privaten Aufgaben, die nicht auf heute stehen, ohne Einmalige, Evergreens und Spontane. Passen muss die Dauer in die frei gewordenen Minuten plus 5, bei einer Aufgabe ohne Dauer zählt die Standarddauer. Fällige zuerst, nach Priorität und Datum, danach was demnächst ansteht, frühestes zuerst.
 

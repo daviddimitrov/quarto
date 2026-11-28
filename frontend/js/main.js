@@ -388,7 +388,9 @@ function menuItems(id, isLong, isEvergreen) {
             ['details', 'Details', 'bi-journal-text'],
         ];
     }
+    const task = findTask(id);
     return [
+        task && task.today === 1 ? ['not-today', 'Nicht heute', 'bi-x-lg'] : ['to-today', 'Auf heute', 'bi-sun'],
         ['edit', 'Bearbeiten', 'bi-pencil'],
         ['tomorrow', 'Morgen', 'bi-arrow-right'],
         ['next-week', 'Nächste Woche', 'bi-calendar-week'],
@@ -488,6 +490,7 @@ function restoreCaches(snapshot) {
 }
 
 function showUndo(text) {
+    hideUndo();
     const $t = $('#undo');
     $('#undo-text').text(text);
     $t.prop('hidden', false).removeClass('run');
@@ -498,39 +501,87 @@ function showUndo(text) {
 function hideUndo() {
     $('#undo').prop('hidden', true).removeClass('run').css('--toast-ms', '');
     $('#undo-alts').prop('hidden', true).empty();
+    $('#undo-btn').prop('hidden', false);
+    if (alts) clearTimeout(alts.timer);
+    alts = null;
 }
 
-// Fällt heute etwas weg, schlägt der Toast bis zu drei Aufgaben vor, die in die frei gewordene Zeit passen
+// Fällt heute etwas weg, schlägt der Toast Aufgaben vor, die in die frei gewordene Zeit passen.
+// Mehrere lassen sich nacheinander wählen, solange die Minuten reichen (5 Minuten Spielraum).
 const ALTS_MS = 10000;
+const ALTS_SLACK = 5;
 const REPLACE_ACTIONS = ['not-today', 'tomorrow', 'next-week'];
+let alts = null;   // { left, timer }
+
+function altsText() {
+    return `Noch ${Math.max(0, alts.left)} min frei`;
+}
+
+function restartToastBar(ms) {
+    const $t = $('#undo');
+    $t.css('--toast-ms', ms / 1000 + 's').removeClass('run');
+    void $t[0].offsetWidth;
+    $t.addClass('run');
+}
+
+function markFit() {
+    $('#undo-alts button').each(function () {
+        const d = Number($(this).attr('data-duration')) || 0;
+        $(this).toggleClass('nofit', !$(this).hasClass('taken') && d > alts.left + ALTS_SLACK);
+    });
+}
 
 function offerReplacements(task) {
     const forPending = pending;
+    const freed = Number(task.duration) || Number((readRaw(profileKey()) || {}).dailyLimit) || 15;
     $.ajax({
         url: apiPrefix + `user/${$.cookie('user_id')}/tasks/replacements`,
         data: { minutes: task.duration || 0, exclude: task.id },
         dataType: 'json',
-    }).then(alts => {
-        if (pending !== forPending || !alts || !alts.length) return;
+    }).then(list => {
+        if (pending !== forPending || !list || !list.length) return;
+        alts = { left: freed, timer: null };
         const $alts = $('#undo-alts').empty().append('<span class="alts-label">Stattdessen:</span>');
-        alts.forEach(a => $alts.append(
-            $('<button type="button">').attr('data-id', a.id)
+        list.forEach(a => $alts.append(
+            $('<button type="button">').attr({ 'data-id': a.id, 'data-duration': a.duration || 0 })
                 .text(a.name).append(a.duration ? `<span class="mono">${a.duration}'</span>` : '')
         ));
         $alts.prop('hidden', false);
+        markFit();
         // Mehr Zeit zum Lesen und Auswählen
         clearTimeout(pending.timer);
         pending.timer = setTimeout(commitPending, ALTS_MS);
-        const $t = $('#undo');
-        $t.css('--toast-ms', ALTS_MS / 1000 + 's').removeClass('run');
-        void $t[0].offsetWidth;
-        $t.addClass('run');
+        restartToastBar(ALTS_MS);
     }).catch(() => {});
 }
 
-function takeReplacement(id) {
-    commitPending();
-    sendTaskAction('to-today', [String(id)]);
+function takeReplacement(button) {
+    if (!alts) return;
+    const $b = $(button);
+    if ($b.hasClass('taken')) return;
+    const d = Number($b.attr('data-duration')) || 0;
+    if (d > alts.left + ALTS_SLACK) {
+        $('#undo-text').text(`Passt nicht mehr, ${altsText().toLowerCase()}`);
+        $b.removeClass('shake'); void button.offsetWidth; $b.addClass('shake');
+        return;
+    }
+    // Die Verschiebung jetzt abschicken, der Hinweis bleibt für weitere Ersatz-Aufgaben stehen
+    if (pending) {
+        const p = pending;
+        pending = null;
+        clearTimeout(p.timer);
+        sendTaskAction(p.action, p.ids);
+        $('#undo-btn').prop('hidden', true);
+    }
+    sendTaskAction('to-today', [String($b.attr('data-id'))]);
+    $b.addClass('taken').find('.mono').remove();
+    $b.prepend('<i class="bi bi-check2"></i> ');
+    alts.left -= d;
+    $('#undo-text').text(altsText());
+    markFit();
+    clearTimeout(alts.timer);
+    alts.timer = setTimeout(hideUndo, ALTS_MS);
+    restartToastBar(ALTS_MS);
 }
 
 function commitPending() {
@@ -588,6 +639,10 @@ function applyTaskAction(action, taskIds) {
             const remaining = (readCache(view) || []).filter(t => !taskIds.includes(String(t.id)));
             writeCache(view, remaining);
         });
+    }
+    // In Alle bleibt die Zeile stehen, nur das Menü muss danach "Nicht heute" anbieten
+    if (!isDayView(currentView) && (action === 'to-today' || action === 'not-today')) {
+        taskIds.forEach(id => updateCachedTask(id, t => { t.today = action === 'to-today' ? 1 : 0; }));
     }
     if (currentView === 'today') setTimeout(renderBudget, 0);
 }
@@ -1956,7 +2011,7 @@ function initUi() {
         dropSuggestion(card);
     });
     $('#undo-btn').on('click', undoPending);
-    $('#undo-alts').on('click', 'button', function () { takeReplacement($(this).attr('data-id')); });
+    $('#undo-alts').on('click', 'button', function () { takeReplacement(this); });
     $('#task-form').on('submit', function (event) {
         event.preventDefault();
         submitTaskForm();
