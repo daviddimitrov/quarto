@@ -508,9 +508,8 @@ function hideUndo() {
 }
 
 // Fällt heute etwas weg, schlägt der Toast Aufgaben vor, die in die frei gewordene Zeit passen.
-// Mehrere lassen sich nacheinander wählen, solange die Minuten reichen (5 Minuten Spielraum).
+// Mehrere lassen sich nacheinander wählen, solange das Tagesbudget reicht.
 const ALTS_MS = 20000;
-const ALTS_SLACK = 5;
 const REPLACE_ACTIONS = ['not-today', 'tomorrow', 'next-week'];
 let alts = null;   // { left, timer }
 
@@ -528,16 +527,22 @@ function restartToastBar(ms) {
 function markFit() {
     $('#undo-alts button').each(function () {
         const d = Number($(this).attr('data-duration')) || 0;
-        $(this).toggleClass('nofit', !$(this).hasClass('taken') && d > alts.left + ALTS_SLACK);
+        $(this).toggleClass('nofit', !$(this).hasClass('taken') && d > alts.left);
     });
 }
 
 function offerReplacements(task) {
     const forPending = pending;
-    const freed = Number(task.duration) || Number((readRaw(profileKey()) || {}).dailyLimit) || 15;
+    // Frei ist, was vom Tagesbudget nach Erledigtem und noch Offenem übrig ist, nicht die Dauer der
+    // verschobenen Aufgabe. Die konnte schon über dem Budget liegen, weil Festhängendes immer reinkommt.
+    const p = readRaw(profileKey()) || {};
+    const open = (readCache('today') || []).reduce((sum, t) => sum + (Number(t.duration) || 0), 0);
+    const budget = p.budgetToday != null ? Number(p.budgetToday) : (Number(task.duration) || 15) + open;
+    const freed = Math.max(0, budget - (Number(p.doneToday) || 0) - open);
+    if (freed <= 0) return;
     $.ajax({
         url: apiPrefix + `user/${$.cookie('user_id')}/tasks/replacements`,
-        data: { minutes: task.duration || 0, exclude: task.id },
+        data: { minutes: freed, exclude: task.id },
         dataType: 'json',
     }).then(list => {
         if (pending !== forPending || !list || !list.length) return;
@@ -570,7 +575,7 @@ function takeReplacement(button) {
         markFit();
         return;
     }
-    if (d > alts.left + ALTS_SLACK) {
+    if (d > alts.left) {
         $('#undo-text').text(`Passt nicht mehr, ${altsText().toLowerCase()}`);
         $b.removeClass('shake'); void button.offsetWidth; $b.addClass('shake');
         return;
