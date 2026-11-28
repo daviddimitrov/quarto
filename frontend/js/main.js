@@ -502,13 +502,14 @@ function hideUndo() {
     $('#undo').prop('hidden', true).removeClass('run').css('--toast-ms', '');
     $('#undo-alts').prop('hidden', true).empty();
     $('#undo-btn').prop('hidden', false);
+    $('#alts-done').prop('hidden', true);
     if (alts) clearTimeout(alts.timer);
     alts = null;
 }
 
 // Fällt heute etwas weg, schlägt der Toast Aufgaben vor, die in die frei gewordene Zeit passen.
 // Mehrere lassen sich nacheinander wählen, solange die Minuten reichen (5 Minuten Spielraum).
-const ALTS_MS = 10000;
+const ALTS_MS = 20000;
 const ALTS_SLACK = 5;
 const REPLACE_ACTIONS = ['not-today', 'tomorrow', 'next-week'];
 let alts = null;   // { left, timer }
@@ -558,8 +559,17 @@ function offerReplacements(task) {
 function takeReplacement(button) {
     if (!alts) return;
     const $b = $(button);
-    if ($b.hasClass('taken')) return;
     const d = Number($b.attr('data-duration')) || 0;
+    if ($b.hasClass('taken')) {
+        // Abwählen: wieder von heute nehmen, die Minuten sind wieder frei
+        sendTaskAction('not-today', [String($b.attr('data-id'))]);
+        $b.removeClass('taken').find('.bi-check2').remove();
+        if (d) $b.append(`<span class="mono">${d}'</span>`);
+        alts.left += d;
+        $('#undo-text').text(altsText());
+        markFit();
+        return;
+    }
     if (d > alts.left + ALTS_SLACK) {
         $('#undo-text').text(`Passt nicht mehr, ${altsText().toLowerCase()}`);
         $b.removeClass('shake'); void button.offsetWidth; $b.addClass('shake');
@@ -571,7 +581,10 @@ function takeReplacement(button) {
         pending = null;
         clearTimeout(p.timer);
         sendTaskAction(p.action, p.ids);
+        // Ab jetzt bleibt der Hinweis stehen, bis "Fertig" kommt
         $('#undo-btn').prop('hidden', true);
+        $('#alts-done').prop('hidden', false);
+        $('#undo').removeClass('run');
     }
     sendTaskAction('to-today', [String($b.attr('data-id'))]);
     $b.addClass('taken').find('.mono').remove();
@@ -579,9 +592,6 @@ function takeReplacement(button) {
     alts.left -= d;
     $('#undo-text').text(altsText());
     markFit();
-    clearTimeout(alts.timer);
-    alts.timer = setTimeout(hideUndo, ALTS_MS);
-    restartToastBar(ALTS_MS);
 }
 
 function commitPending() {
@@ -2012,6 +2022,7 @@ function initUi() {
     });
     $('#undo-btn').on('click', undoPending);
     $('#undo-alts').on('click', 'button', function () { takeReplacement(this); });
+    $('#alts-done').on('click', hideUndo);
     $('#task-form').on('submit', function (event) {
         event.preventDefault();
         submitTaskForm();
