@@ -6,6 +6,7 @@ Umgebungsvariable. Fehlt sie, wird der SecureString /quarto/tmdb aus SSM gelesen
 """
 
 import functools
+import itertools
 import json
 import os
 import urllib.parse
@@ -569,7 +570,7 @@ def label(item):
 
 
 def where_short(item):
-    providers = list(item.get("providers") or [])[:2]
+    providers = list(itertools.islice(item.get("providers") or [], 2))
     if providers:
         return " bei " + ", ".join(providers)
     return " im Kino" if item.get("where") == "kino" else ""

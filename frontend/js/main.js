@@ -1444,20 +1444,25 @@ function testPush() {
 const NOTIF_DAYS = { taeglich: 'Täglich', werktags: 'Mo–Fr', wochenende: 'Sa–So' };
 const NOTIF_KINDS = { morgen: 'ASAP und Deadlines', offen: 'Was noch offen ist', aufwand: 'Aufwand heute' };
 
+// Zeile als DOM-Elemente statt HTML-String: Werte vom Server landen nur über .val(), nie im Markup
 function notifRow(n) {
-    const options = (map, value) => Object.entries(map)
-        .map(([k, label]) => `<option value="${k}"${k === value ? ' selected' : ''}>${label}</option>`).join('');
-    return `<div class="notif-row">
-        <input type="time" step="900" class="notif-time" aria-label="Uhrzeit" value="${/^\d{2}:\d{2}$/.test(n.time) ? n.time : '07:30'}">
-        <select class="notif-days" aria-label="Tage">${options(NOTIF_DAYS, n.days || 'taeglich')}</select>
-        <select class="notif-kind" aria-label="Inhalt">${options(NOTIF_KINDS, n.kind || 'morgen')}</select>
-        <button type="button" class="icon-btn small notif-remove" aria-label="Entfernen"><i class="bi bi-x-lg"></i></button>
-    </div>`;
+    const select = (cls, label, map, value) => {
+        const $s = $('<select>').addClass(cls).attr('aria-label', label);
+        Object.entries(map).forEach(([k, text]) => $s.append($('<option>').val(k).text(text)));
+        return $s.val(Object.hasOwn(map, value) ? value : Object.keys(map)[0]);
+    };
+    const time = /^\d{2}:\d{2}$/.test(n.time) ? n.time : '07:30';
+    return $('<div class="notif-row">').append(
+        $('<input type="time" step="900" class="notif-time" aria-label="Uhrzeit">').val(time),
+        select('notif-days', 'Tage', NOTIF_DAYS, n.days),
+        select('notif-kind', 'Inhalt', NOTIF_KINDS, n.kind),
+        $('<button type="button" class="icon-btn small notif-remove" aria-label="Entfernen"><i class="bi bi-x-lg"></i></button>'),
+    );
 }
 
 function renderNotifications(list) {
-    $('#notif-list').html((list || []).map(notifRow).join('')
-        || '<p class="muted small">Keine Benachrichtigungen.</p>');
+    const rows = (list || []).map(notifRow);
+    $('#notif-list').empty().append(rows.length ? rows : $('<p class="muted small">').text('Keine Benachrichtigungen.'));
 }
 
 function saveNotifications() {
