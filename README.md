@@ -493,9 +493,9 @@ Eigene Seite für Filme und Serien, die man sehen will. Sie ist bewusst getrennt
 
 ### Fortschritt
 
-Der Balken auf der Heute-Seite zeigt das Budget minus die noch offenen Minuten, zum Beispiel `1 / 18 min · +3 Übertrag`. Was der Collector nicht verplanen konnte, zählt also von Anfang an als geschafft: Morgens steht der Balken schon leicht gefüllt, mit jedem Haken wächst er, und sind alle Aufgaben mit Dauer erledigt, ist er voll. Berechnet wird er im Frontend aus der Heute-Liste, er stimmt deshalb auf allen Geräten nach dem nächsten Sync. Liegen mehr offene Minuten als Budget auf heute, etwa durch eine hochgezogene Aufgabe, beginnt er bei 0.
+Der Balken auf der Heute-Seite zeigt, was heute wirklich anliegt: erledigte private Minuten von erledigt plus noch offen, zum Beispiel `12 / 26 min`. Morgens steht er bei 0, mit jedem Haken wächst er, und sind alle Aufgaben mit Dauer erledigt, ist er voll. Das Budget steuert nur, wie viel der Collector auf heute legt, und taucht im Balken nicht auf. Liegt mehr auf heute, etwa durch eine festhängende Aufgabe, wächst die Gesamtzahl einfach mit.
 
-`done_minutes` im Profil zählt weiterhin die erledigten privaten Minuten pro Tag, wird für den Balken aber nicht mehr gebraucht.
+`done_minutes` im Profil zählt die erledigten privaten Minuten pro Tag und liefert den erledigten Teil des Balkens. Die App zählt beim Abhaken lokal mit, damit der Balken sofort reagiert.
 
 ### Bedarf
 
