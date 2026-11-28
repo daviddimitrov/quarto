@@ -214,8 +214,8 @@ def replacements(p, body):
         minutes = int(p.get("minutes") or 0)
     except ValueError:
         minutes = 0
-    # Fällt eine Aufgabe ohne Dauer weg, gilt die Standarddauer
-    limit = (minutes or int(profile.get("default_duration", 15))) + 5
+    # minutes ist, was vom Tagesbudget noch frei ist, die App rechnet es aus
+    limit = minutes or int(profile.get("default_duration", 15))
     now = today().isoformat()
     tasks = [t for t in query_all(f"USER#{user_id}") if t["SK"].startswith("TASK#")
              and t.get("kontext", "privat") == "privat" and t.get("today") != 1

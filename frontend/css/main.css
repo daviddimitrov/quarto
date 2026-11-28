@@ -716,7 +716,16 @@ kbd {
     gap: 8px;
 }
 
-#undo-btn:hover { background: var(--hover); }
+#undo-btn:hover, #alts-done:hover { background: var(--hover); }
+
+#alts-done {
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 8px;
+    color: var(--accent);
+    font-weight: 500;
+    font-size: 13px;
+}
 
 .toast-bar {
     position: absolute;
@@ -729,6 +738,7 @@ kbd {
     transform-origin: left;
 }
 
+.toast:not(.run) .toast-bar { display: none; }
 .toast.run .toast-bar { animation: toast-bar var(--toast-ms, 5s) linear forwards; }
 
 /* Ersatz-Vorschläge unter "Auf morgen" und Co. */

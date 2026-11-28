@@ -502,14 +502,14 @@ function hideUndo() {
     $('#undo').prop('hidden', true).removeClass('run').css('--toast-ms', '');
     $('#undo-alts').prop('hidden', true).empty();
     $('#undo-btn').prop('hidden', false);
+    $('#alts-done').prop('hidden', true);
     if (alts) clearTimeout(alts.timer);
     alts = null;
 }
 
 // Fällt heute etwas weg, schlägt der Toast Aufgaben vor, die in die frei gewordene Zeit passen.
-// Mehrere lassen sich nacheinander wählen, solange die Minuten reichen (5 Minuten Spielraum).
-const ALTS_MS = 10000;
-const ALTS_SLACK = 5;
+// Mehrere lassen sich nacheinander wählen, solange das Tagesbudget reicht.
+const ALTS_MS = 20000;
 const REPLACE_ACTIONS = ['not-today', 'tomorrow', 'next-week'];
 let alts = null;   // { left, timer }
 
@@ -527,16 +527,22 @@ function restartToastBar(ms) {
 function markFit() {
     $('#undo-alts button').each(function () {
         const d = Number($(this).attr('data-duration')) || 0;
-        $(this).toggleClass('nofit', !$(this).hasClass('taken') && d > alts.left + ALTS_SLACK);
+        $(this).toggleClass('nofit', !$(this).hasClass('taken') && d > alts.left);
     });
 }
 
 function offerReplacements(task) {
     const forPending = pending;
-    const freed = Number(task.duration) || Number((readRaw(profileKey()) || {}).dailyLimit) || 15;
+    // Frei ist, was vom Tagesbudget nach Erledigtem und noch Offenem übrig ist, nicht die Dauer der
+    // verschobenen Aufgabe. Die konnte schon über dem Budget liegen, weil Festhängendes immer reinkommt.
+    const p = readRaw(profileKey()) || {};
+    const open = (readCache('today') || []).reduce((sum, t) => sum + (Number(t.duration) || 0), 0);
+    const budget = p.budgetToday != null ? Number(p.budgetToday) : (Number(task.duration) || 15) + open;
+    const freed = Math.max(0, budget - (Number(p.doneToday) || 0) - open);
+    if (freed <= 0) return;
     $.ajax({
         url: apiPrefix + `user/${$.cookie('user_id')}/tasks/replacements`,
-        data: { minutes: task.duration || 0, exclude: task.id },
+        data: { minutes: freed, exclude: task.id },
         dataType: 'json',
     }).then(list => {
         if (pending !== forPending || !list || !list.length) return;
@@ -558,9 +564,18 @@ function offerReplacements(task) {
 function takeReplacement(button) {
     if (!alts) return;
     const $b = $(button);
-    if ($b.hasClass('taken')) return;
     const d = Number($b.attr('data-duration')) || 0;
-    if (d > alts.left + ALTS_SLACK) {
+    if ($b.hasClass('taken')) {
+        // Abwählen: wieder von heute nehmen, die Minuten sind wieder frei
+        sendTaskAction('not-today', [String($b.attr('data-id'))]);
+        $b.removeClass('taken').find('.bi-check2').remove();
+        if (d) $b.append(`<span class="mono">${d}'</span>`);
+        alts.left += d;
+        $('#undo-text').text(altsText());
+        markFit();
+        return;
+    }
+    if (d > alts.left) {
         $('#undo-text').text(`Passt nicht mehr, ${altsText().toLowerCase()}`);
         $b.removeClass('shake'); void button.offsetWidth; $b.addClass('shake');
         return;
@@ -571,7 +586,10 @@ function takeReplacement(button) {
         pending = null;
         clearTimeout(p.timer);
         sendTaskAction(p.action, p.ids);
+        // Ab jetzt bleibt der Hinweis stehen, bis "Fertig" kommt
         $('#undo-btn').prop('hidden', true);
+        $('#alts-done').prop('hidden', false);
+        $('#undo').removeClass('run');
     }
     sendTaskAction('to-today', [String($b.attr('data-id'))]);
     $b.addClass('taken').find('.mono').remove();
@@ -579,9 +597,6 @@ function takeReplacement(button) {
     alts.left -= d;
     $('#undo-text').text(altsText());
     markFit();
-    clearTimeout(alts.timer);
-    alts.timer = setTimeout(hideUndo, ALTS_MS);
-    restartToastBar(ALTS_MS);
 }
 
 function commitPending() {
@@ -2012,6 +2027,7 @@ function initUi() {
     });
     $('#undo-btn').on('click', undoPending);
     $('#undo-alts').on('click', 'button', function () { takeReplacement(this); });
+    $('#alts-done').on('click', hideUndo);
     $('#task-form').on('submit', function (event) {
         event.preventDefault();
         submitTaskForm();
