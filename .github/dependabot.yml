@@ -13,6 +13,13 @@ updates:
   - package-ecosystem: npm
     directories: [/backend, /frontend]
     schedule: { interval: weekly, day: monday }
+    ignore:
+      # @types/node folgt der Node-Version in CI und Lambda-Tooling (22), nicht der neuesten
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+      # ts-jest unterstützt TypeScript 7 noch nicht
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
     groups:
       npm-minor:
         update-types: [minor, patch]
