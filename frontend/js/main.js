@@ -1186,6 +1186,7 @@ function loadAccount() {
             renderPush();
             renderNotifications(p.notifications);
             $('#notifMessage').text('');
+            renderPlanta(!!p.plantaConnected);
         },
         error: function () {
             showAccountMessage('Konto konnte nicht geladen werden.', false);
@@ -1265,6 +1266,51 @@ function renderDemand(tasks) {
         `<div class="demand-row"><span class="name">${escapeHtml(x.task.name)}</span>`
         + `<span class="mono muted">${x.task.duration}m / ${escapeHtml(x.task.rhythm)}</span>`
         + `<span class="mono">${formatMinutes(x.perDay)}</span></div>`).join(''));
+}
+
+// ---------- Planta ----------
+
+function renderPlanta(connected) {
+    $('#plantaConnect').prop('hidden', connected);
+    $('#plantaConnected').prop('hidden', !connected);
+}
+
+function plantaResult(r) {
+    if (!r || r.faellig == null) return 'Verbunden.';
+    return r.faellig ? `${r.faellig} Pflanzenaufgaben auf heute (${r.neu} neu, ${r.entfernt} entfernt).`
+        : 'Heute ist nichts zu gießen oder zu düngen.';
+}
+
+function plantaCall(path, method, data, done) {
+    $('#plantaMessage').text('…');
+    $.ajax({
+        url: apiPrefix + `user/${$.cookie('user_id')}/planta${path}`,
+        method: method,
+        contentType: 'application/json',
+        data: data ? JSON.stringify(data) : undefined,
+        dataType: 'json',
+        success: r => { done(r); },
+        error: xhr => $('#plantaMessage').text((xhr.responseJSON && xhr.responseJSON.message) || 'Das hat nicht geklappt.'),
+    });
+}
+
+function connectPlanta() {
+    const code = $('#plantaCode').val().trim();
+    if (!code) return;
+    plantaCall('', 'POST', { code }, r => {
+        $('#plantaCode').val('');
+        renderPlanta(true);
+        $('#plantaMessage').text(plantaResult(r));
+    });
+}
+
+function syncPlanta() {
+    plantaCall('/sync', 'POST', null, r => $('#plantaMessage').text(plantaResult(r)));
+}
+
+function disconnectPlanta() {
+    if (!window.confirm('Planta trennen? Bestehende Pflanzenaufgaben bleiben, es kommen nur keine neuen mehr.')) return;
+    plantaCall('', 'DELETE', null, () => { renderPlanta(false); $('#plantaMessage').text('Getrennt.'); });
 }
 
 function createQuickKey() {
@@ -2019,6 +2065,9 @@ function initUi() {
     $('#undo-btn').on('click', undoPending);
     $('#undo-alts').on('click', 'button', function () { takeReplacement(this); });
     $('#alts-done').on('click', hideUndo);
+    $('#plantaConnectButton').on('click', connectPlanta);
+    $('#plantaSync').on('click', syncPlanta);
+    $('#plantaDisconnect').on('click', disconnectPlanta);
     $('#task-form').on('submit', function (event) {
         event.preventDefault();
         submitTaskForm();

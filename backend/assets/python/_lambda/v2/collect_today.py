@@ -172,7 +172,8 @@ def collect_for_user(user_id, nightly):
         chosen, total, work, deadline_tasks = set(), 0, [], []
 
     for t in tasks:
-        if t.get("spontan") or t.get("evergreen"):
+        # Pflanzenaufgaben aus Planta stehen immer auf heute, darum kümmert sich planta.py
+        if t.get("spontan") or t.get("evergreen") or t.get("planta_key"):
             continue
         new = 1 if t["SK"] in chosen else 0
         if int(t.get("today", 0)) != new:
@@ -207,5 +208,8 @@ def lambda_handler(event, context):
     for p in profiles:
         uid = p["PK"].removeprefix("USER#")
         results[uid] = collect_for_user(uid, nightly=True)
-    print(json.dumps(results))
+    # Danach die fälligen Pflanzen aus Planta, ohne Budget auf heute
+    import planta
+    results["planta"] = planta.sync_all()
+    print(json.dumps(results, default=str))
     return results
